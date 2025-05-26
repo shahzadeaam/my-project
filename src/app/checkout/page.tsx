@@ -13,13 +13,17 @@ import { Label } from '@/components/ui/label';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { useCart } from '@/context/cart-context';
-import type { CartItem as CartItemType } from '@/context/cart-context';
+import type { CartItem as CartItemType } from '@/context/cart-context'; // CartItemType uses Product from firestore (price is number)
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { AlertCircle, CreditCard, ShoppingBag, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useEffect, useState } from 'react';
-import { useToast } from '@/hooks/use-toast'; // Added useToast
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/auth-context';
+import { db, Timestamp } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import type { OrderDocument, OrderItem, Address as UserAddress } from '@/types/firestore';
 
 const checkoutFormSchema = z.object({
   fullName: z.string().min(3, { message: 'نام و نام خانوادگی باید حداقل ۳ حرف باشد.' }),
@@ -30,15 +34,12 @@ const checkoutFormSchema = z.object({
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 
 function OrderSummaryItem({ item }: { item: CartItemType }) {
-  const parsePrice = (priceString: string): number => {
-    const cleanedString = priceString.replace(/[^\d]/g, '');
-    return parseInt(cleanedString, 10) || 0;
-  };
+  // item.price is now a number
+  const totalPriceForItem = item.price * item.quantity;
+
   const formatPrice = (price: number): string => {
     return `${price.toLocaleString('fa-IR')} تومان`;
   };
-  const itemPrice = parsePrice(item.price);
-  const totalPriceForItem = itemPrice * item.quantity;
 
   return (
     <div className="flex items-center justify-between py-3">
@@ -58,14 +59,24 @@ function OrderSummaryItem({ item }: { item: CartItemType }) {
 
 export default function CheckoutPage() {
   const { items, clearCart } = useCart();
+  const { currentUser } = useAuth();
   const router = useRouter();
-  const { toast } = useToast(); // Initialized useToast
+  const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const { register, handleSubmit, formState: { errors } } = useForm<CheckoutFormValues>({
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutFormSchema),
   });
+
+  useEffect(() => {
+    if (currentUser) {
+      setValue('fullName', currentUser.displayName || '');
+      setValue('email', currentUser.email || '');
+      // Assuming phone number is not directly in currentUser from Firebase Auth
+      // It would be fetched from user's Firestore profile if available
+    }
+  }, [currentUser, setValue]);
 
   useEffect(() => {
     if (items.length === 0 && !isProcessing) {
@@ -73,51 +84,87 @@ export default function CheckoutPage() {
     }
   }, [items, router, isProcessing]);
 
-  const parsePrice = (priceString: string): number => {
-    const cleanedString = priceString.replace(/[^\d]/g, '');
-    return parseInt(cleanedString, 10) || 0;
-  };
+  const cartTotal = items.reduce((total, item) => {
+    return total + (item.price * item.quantity);
+  }, 0);
 
   const formatPrice = (price: number): string => {
     return `${price.toLocaleString('fa-IR')} تومان`;
   };
 
-  const cartTotal = items.reduce((total, item) => {
-    return total + (parsePrice(item.price) * item.quantity);
-  }, 0);
-
   const onSubmit: SubmitHandler<CheckoutFormValues> = async (data) => {
+    if (!currentUser) {
+      toast({
+        title: "خطا",
+        description: "برای تکمیل خرید باید وارد حساب کاربری خود شوید.",
+        variant: "destructive",
+      });
+      router.push('/auth/login?redirect=/checkout');
+      return;
+    }
+
     setIsProcessing(true);
     setPaymentStatus('idle');
-    console.log('Checkout data:', data);
     const mockOrderId = `ORD-${Date.now().toString().slice(-6)}`;
 
-
     // Simulate payment gateway interaction
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Simulate a successful payment for this example
-    const paymentSuccessful = true; // Math.random() > 0.2; // Simulate success/failure
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const paymentSuccessful = true; 
 
     if (paymentSuccessful) {
-      setPaymentStatus('success');
-      
-      // Simulate admin notification
-      toast({
-        title: "اطلاع به ادمین (نمایشی)",
-        description: `یک سفارش جدید با موفقیت ثبت شد. شماره سفارش: ${mockOrderId}`,
-        variant: "default",
-        duration: 5000, // Show for 5 seconds
-      });
+      try {
+        const orderItems: OrderItem[] = items.map(item => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price, // price is already a number
+          quantity: item.quantity,
+          imageUrl: item.imageUrl,
+        }));
 
-      // Normally, order details would be sent to a backend here
-      // And then cart would be cleared upon successful backend confirmation
-      clearCart();
-      router.push(`/order-confirmation?orderId=${mockOrderId}`); 
+        const newOrder: Omit<OrderDocument, 'id'> = {
+          userId: currentUser.uid,
+          items: orderItems,
+          totalAmount: cartTotal,
+          status: 'در حال پردازش',
+          customerInfo: {
+            fullName: data.fullName,
+            email: data.email,
+            phoneNumber: data.phoneNumber,
+          },
+          // shippingAddress: undefined, // TODO: Implement address selection if needed
+          paymentDetails: { // For simulated payment
+            orderId: mockOrderId,
+            gateway: "Simulated Gateway",
+          },
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+
+        const ordersCol = collection(db, 'orders');
+        const docRef = await addDoc(ordersCol, newOrder);
+
+        setPaymentStatus('success');
+        toast({
+          title: "اطلاع به ادمین (نمایشی)",
+          description: `یک سفارش جدید با شناسه ${docRef.id} ثبت شد. شماره سفارش: ${mockOrderId}`,
+          variant: "default",
+          duration: 7000,
+        });
+        clearCart();
+        router.push(`/order-confirmation?orderId=${mockOrderId}&docId=${docRef.id}`); 
+      } catch (error) {
+        console.error("Error creating order in Firestore: ", error);
+        toast({
+          title: "خطا در ثبت سفارش",
+          description: "مشکلی در ذخیره سفارش شما در پایگاه داده پیش آمد. لطفاً با پشتیبانی تماس بگیرید.",
+          variant: "destructive",
+        });
+        setPaymentStatus('error');
+      }
     } else {
       setPaymentStatus('error');
-      setIsProcessing(false);
     }
+    setIsProcessing(false);
   };
   
   if (items.length === 0 && !isProcessing) {
@@ -138,7 +185,6 @@ export default function CheckoutPage() {
     );
   }
 
-
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
@@ -153,7 +199,7 @@ export default function CheckoutPage() {
           <Info className="h-5 w-5 !text-blue-700" />
           <AlertTitle className="font-semibold">توجه: پرداخت آزمایشی</AlertTitle>
           <AlertDescription>
-            این یک فرآیند پرداخت شبیه‌سازی شده است. هیچ تراکنش مالی واقعی انجام نخواهد شد و به درگاه پرداخت واقعی متصل نمی‌شوید.
+            این یک فرآیند پرداخت شبیه‌سازی شده است. هیچ تراکنش مالی واقعی انجام نخواهد شد. سفارش شما در پایگاه داده ثبت خواهد شد.
           </AlertDescription>
         </Alert>
 
@@ -181,19 +227,21 @@ export default function CheckoutPage() {
                     <Input id="phoneNumber" type="tel" {...register('phoneNumber')} dir="ltr" className="mt-1 h-11" />
                     {errors.phoneNumber && <p className="text-sm text-destructive mt-1">{errors.phoneNumber.message}</p>}
                   </div>
-                  <Button type="submit" size="lg" className="w-full mt-6 h-12 text-base" disabled={isProcessing}>
+                  {/* TODO: Add address selection here if multiple addresses are supported */}
+                  <Button type="submit" size="lg" className="w-full mt-6 h-12 text-base" disabled={isProcessing || !currentUser}>
                     {isProcessing ? (
                       <>
                         <CreditCard className="ml-2 h-5 w-5 animate-pulse rtl:mr-2 rtl:ml-0" />
-                        در حال انتقال به درگاه پرداخت...
+                        در حال پردازش سفارش...
                       </>
                     ) : (
                       <>
                         <CreditCard className="ml-2 h-5 w-5 rtl:mr-2 rtl:ml-0" />
-                        پرداخت و تکمیل سفارش
+                        ثبت سفارش و پرداخت (شبیه‌سازی)
                       </>
                     )}
                   </Button>
+                   {!currentUser && <p className="text-sm text-destructive mt-2 text-center">برای تکمیل خرید باید وارد حساب کاربری خود شوید.</p>}
                 </form>
                 {paymentStatus === 'error' && (
                   <Alert variant="destructive" className="mt-6">
@@ -224,8 +272,8 @@ export default function CheckoutPage() {
                 </div>
               </CardContent>
               <CardFooter className="flex-col items-start gap-2 text-xs text-muted-foreground">
-                 <p>پس از تکمیل اطلاعات، به صفحه پرداخت امن هدایت خواهید شد.</p>
-                 <p>این سفارش شامل هزینه ارسال نمی‌باشد.</p>
+                 <p>پس از تکمیل اطلاعات، سفارش شما ثبت خواهد شد.</p>
+                 <p>این سفارش شامل هزینه ارسال نمی‌باشد (در این مرحله).</p>
               </CardFooter>
             </Card>
           </div>
@@ -235,4 +283,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-

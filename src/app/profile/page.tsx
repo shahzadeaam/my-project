@@ -12,7 +12,6 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff, MapPin, PlusCircle, Trash2, ShieldCheck } from 'lucide-react';
-import { mockOrders, type Order } from '@/data/orders';
 import Image from 'next/image';
 import {
   Dialog,
@@ -24,49 +23,28 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { useAuth } from '@/context/auth-context';
-import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase'; // Import db from firebase
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, Timestamp, orderBy } from 'firebase/firestore'; // Firestore imports
+import { updateProfile as updateFirebaseProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { auth, db, Timestamp } from '@/lib/firebase';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import type { UserProfileDocument, Address, OrderDocument, OrderItem } from '@/types/firestore';
 
-
-interface UserProfile {
-  fullName: string;
-  email: string;
-  phoneNumber: string; // Remains mock for now unless stored in Firestore
-}
-
-export interface Address { // Export Address interface
-  id: string; // Firestore document ID
-  recipientName: string;
-  street: string;
-  city: string;
-  postalCode: string;
-  phoneNumber: string;
-  isDefault?: boolean;
-  createdAt?: Timestamp; // For ordering or other purposes
-}
-
-// No longer using initialMockAddresses, will fetch from Firestore
-// const initialMockAddresses: Address[] = [ ... ];
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [isEditingInfo, setIsEditingInfo] = useState(false);
 
-  const [profile, setProfile] = useState<UserProfile>({
-    fullName: '',
-    email: '',
-    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', // Stays mock unless moved to Firestore
-  });
-  const [tempProfile, setTempProfile] = useState<UserProfile>(profile);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [profile, setProfile] = useState<UserProfileDocument | null>(null);
+  const [tempProfileData, setTempProfileData] = useState<{fullName: string, phoneNumber: string}>({ fullName: '', phoneNumber: ''});
+  
+  const [selectedOrder, setSelectedOrder] = useState<OrderDocument | null>(null);
+  const [userOrders, setUserOrders] = useState<OrderDocument[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
   const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -90,92 +68,183 @@ export default function ProfilePage() {
     phoneNumber: '',
   });
 
-  const [showPublicProfile, setShowPublicProfile] = useState(false); // Mock
-  const [receiveNewsletter, setReceiveNewsletter] = useState(true); // Mock
-  const [shareActivity, setShareActivity] = useState(false); // Mock
+  const [privacySettings, setPrivacySettings] = useState({
+    showPublicProfile: false,
+    receiveNewsletter: true,
+    shareActivity: false,
+  });
+  const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
 
 
+  // Fetch User Profile Data from Firestore
   useEffect(() => {
-    if (currentUser) {
-      const newProfileData = {
-        fullName: currentUser.displayName || 'کاربر نمونه',
-        email: currentUser.email || 'user@example.com',
-        phoneNumber: profile.phoneNumber, // Keep mock or fetch from Firestore
-      };
-      setProfile(newProfileData);
-      setTempProfile(newProfileData);
-
-      const filteredOrders = mockOrders.filter(order => order.userId === currentUser.uid);
-      setUserOrders(filteredOrders);
-      
-      fetchAddresses();
-
-    } else if (!authLoading) {
-      const defaultProfile = {
-        fullName: 'کاربر نمونه',
-        email: 'user@example.com',
-        phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹',
-      };
-      setProfile(defaultProfile);
-      setTempProfile(defaultProfile);
-      setUserOrders([]);
-      setAddresses([]); // Clear addresses if user logs out
+    const fetchUserProfile = async () => {
+      if (currentUser) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data() as UserProfileDocument;
+          setProfile(userData);
+          setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
+          setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
+        } else {
+          // Create a profile if it doesn't exist (e.g., for users created before this logic)
+          const newProfile: UserProfileDocument = {
+            uid: currentUser.uid,
+            email: currentUser.email || '',
+            fullName: currentUser.displayName || 'کاربر',
+            phoneNumber: '',
+            privacySettings: { showPublicProfile: false, receiveNewsletter: true, shareActivity: false },
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+          };
+          await setDoc(userDocRef, newProfile);
+          setProfile(newProfile);
+          setTempProfileData({ fullName: newProfile.fullName, phoneNumber: newProfile.phoneNumber || '' });
+        }
+      } else {
+        setProfile(null); // Clear profile if no user
+      }
+    };
+    if (!authLoading) {
+      fetchUserProfile();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, authLoading]);
 
-
-  const fetchAddresses = async () => {
-    if (!currentUser) return;
-    setIsLoadingAddresses(true);
-    try {
-      const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
-      const q = query(addressesCol, orderBy('createdAt', 'desc')); // Order by creation time or isDefault
-      const addressSnapshot = await getDocs(q);
-      const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
-      setAddresses(fetchedAddresses);
-    } catch (error) {
-      console.error("Error fetching addresses: ", error);
-      toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
-    } finally {
-      setIsLoadingAddresses(false);
+  // Fetch User Orders
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (!currentUser) {
+        setUserOrders([]);
+        return;
+      }
+      setIsLoadingOrders(true);
+      try {
+        const ordersCol = collection(db, 'orders');
+        const q = query(ordersCol, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+        const ordersSnapshot = await getDocs(q);
+        const fetchedOrders = ordersSnapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        } as OrderDocument));
+        setUserOrders(fetchedOrders);
+      } catch (error) {
+        console.error("Error fetching orders: ", error);
+        toast({ title: "خطا", description: "مشکلی در بارگذاری سفارش‌ها پیش آمد.", variant: "destructive" });
+      } finally {
+        setIsLoadingOrders(false);
+      }
+    };
+    if (currentUser) {
+      fetchOrders();
     }
-  };
+  }, [currentUser, toast]);
+
+  // Fetch Addresses (already implemented from previous step)
+  useEffect(() => {
+    const fetchAddresses = async () => {
+        if (!currentUser) {
+            setAddresses([]);
+            return;
+        }
+        setIsLoadingAddresses(true);
+        try {
+            const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
+            const q = query(addressesCol, orderBy('createdAt', 'desc'));
+            const addressSnapshot = await getDocs(q);
+            const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
+            setAddresses(fetchedAddresses);
+        } catch (error) {
+            console.error("Error fetching addresses: ", error);
+            toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
+        } finally {
+            setIsLoadingAddresses(false);
+        }
+    };
+    if(currentUser) fetchAddresses();
+  }, [currentUser, toast]);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setTempProfile(prev => ({ ...prev, [name]: value }));
+    setTempProfileData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSaveInfo = async () => {
-    if (!currentUser) {
+    if (!currentUser || !profile) {
       toast({ title: "خطا", description: "برای ویرایش اطلاعات باید وارد شده باشید.", variant: "destructive" });
       return;
     }
-    setIsEditingInfo(false);
-    try {
-      if (tempProfile.fullName !== profile.fullName && auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: tempProfile.fullName });
+    
+    const updates: Partial<UserProfileDocument> = { updatedAt: Timestamp.now() };
+    let authProfileUpdated = false;
+
+    if (tempProfileData.fullName !== (profile.fullName || currentUser.displayName)) {
+      updates.fullName = tempProfileData.fullName;
+      if (auth.currentUser && auth.currentUser.displayName !== tempProfileData.fullName) {
+        try {
+          await updateFirebaseProfile(auth.currentUser, { displayName: tempProfileData.fullName });
+          authProfileUpdated = true;
+        } catch (error) {
+           console.error("Error updating Firebase Auth displayName:", error);
+           toast({ title: "خطا", description: "مشکلی در به‌روزرسانی نام در سیستم احراز هویت رخ داد.", variant: "destructive" });
+        }
       }
-      setProfile(prev => ({
-        ...prev,
-        fullName: tempProfile.fullName,
-        // email: tempProfile.email, // Email is not directly editable here for safety
-        phoneNumber: tempProfile.phoneNumber, // Still mock, or needs Firestore save
-      }));
-      toast({ title: "اطلاعات ذخیره شد", description: "نام و نام خانوادگی شما به‌روزرسانی شد." });
-      if (tempProfile.phoneNumber !== profile.phoneNumber) {
-        toast({ title: "توجه", description: "شماره تماس در حال حاضر به صورت نمایشی ذخیره می‌شود.", variant: "default", duration: 7000 });
+    }
+    if (tempProfileData.phoneNumber !== profile.phoneNumber) {
+      updates.phoneNumber = tempProfileData.phoneNumber;
+    }
+
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userDocRef, updates);
+      
+      setProfile(prev => prev ? ({ ...prev, ...updates, fullName: updates.fullName ?? prev.fullName, phoneNumber: updates.phoneNumber ?? prev.phoneNumber }) : null);
+      setIsEditingInfo(false);
+      toast({ title: "اطلاعات ذخیره شد", description: "اطلاعات پروفایل شما با موفقیت به‌روزرسانی شد." });
+       if(authProfileUpdated) {
+        // Manually update context or rely on onAuthStateChanged if it picks up displayName change quickly
+        // Forcing a reload of user from auth might be an option or simply updating local state.
       }
     } catch (error) {
-      console.error("Error updating profile:", error);
-      toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل رخ داد.", variant: "destructive" });
-      setTempProfile(profile);
+      console.error("Error updating profile in Firestore:", error);
+      toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل در پایگاه داده رخ داد.", variant: "destructive" });
+    }
+  };
+  
+  const handlePrivacySettingChange = async (key: keyof UserProfileDocument['privacySettings'], value: boolean) => {
+    if (!currentUser || !profile) return;
+
+    const newPrivacySettings = {
+      ...privacySettings,
+      [key]: value,
+    };
+    setPrivacySettings(newPrivacySettings); // Optimistic update
+
+    setIsSavingPrivacy(true);
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userDocRef, { 
+        privacySettings: newPrivacySettings,
+        updatedAt: Timestamp.now(),
+      });
+      setProfile(prev => prev ? ({ ...prev, privacySettings: newPrivacySettings, updatedAt: Timestamp.now() }) : null);
+      toast({ title: "تنظیمات ذخیره شد", description: "تنظیمات حریم خصوصی شما به‌روزرسانی شد." });
+    } catch (error) {
+      console.error("Error saving privacy settings:", error);
+      toast({ title: "خطا", description: "مشکلی در ذخیره تنظیمات حریم خصوصی پیش آمد.", variant: "destructive" });
+      // Revert optimistic update if needed
+      setPrivacySettings(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
+    } finally {
+      setIsSavingPrivacy(false);
     }
   };
 
+
   const handleCancelEdit = () => {
-    setTempProfile(profile);
+    if (profile) {
+        setTempProfileData({ fullName: profile.fullName || currentUser?.displayName || '', phoneNumber: profile.phoneNumber || '' });
+    }
     setIsEditingInfo(false);
   };
 
@@ -253,19 +322,18 @@ export default function ProfilePage() {
     }
 
     const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
-    const newAddressData = { ...currentAddressForm, createdAt: serverTimestamp() };
-
+    
     try {
-      if (editingAddress) { // Editing existing address
+      if (editingAddress) {
         const addressRef = doc(db, 'users', currentUser.uid, 'addresses', editingAddress.id);
-        await updateDoc(addressRef, currentAddressForm); // Don't update createdAt on edit unless needed
+        await updateDoc(addressRef, { ...currentAddressForm, updatedAt: Timestamp.now() });
         toast({ title: "آدرس به‌روزرسانی شد", description: "تغییرات آدرس شما با موفقیت ذخیره شد." });
-      } else { // Adding new address
-        // If it's the first address, or if no other address is default, make this one default
+      } else {
         const isMakingDefault = addresses.length === 0 || !addresses.some(addr => addr.isDefault);
-        const docRef = await addDoc(addressesCol, { ...newAddressData, isDefault: isMakingDefault });
+        const newAddressData = { ...currentAddressForm, createdAt: Timestamp.now(), isDefault: isMakingDefault };
+        const docRef = await addDoc(addressesCol, newAddressData);
         
-        if (isMakingDefault && addresses.length > 0) { // If made default and others exist, ensure only one default
+        if (isMakingDefault && addresses.length > 0) {
             const batch = writeBatch(db);
             addresses.filter(addr => addr.isDefault && addr.id !== docRef.id).forEach(oldDefaultAddr => {
                 const oldDefaultRef = doc(db, 'users', currentUser.uid, 'addresses', oldDefaultAddr.id);
@@ -275,7 +343,14 @@ export default function ProfilePage() {
         }
         toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما با موفقیت اضافه شد." });
       }
-      fetchAddresses(); // Refresh the list
+      // Manually call fetchAddresses after Firestore operation
+      if (currentUser) { // Re-check currentUser as it might be null if logout happened during async
+        setIsLoadingAddresses(true);
+        const addressesSnapshot = await getDocs(query(collection(db, 'users', currentUser.uid, 'addresses'), orderBy('createdAt', 'desc')));
+        const fetchedAddresses = addressesSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
+        setAddresses(fetchedAddresses);
+        setIsLoadingAddresses(false);
+      }
       setIsAddressDialogOpen(false);
     } catch (error) {
       console.error("Error saving address: ", error);
@@ -295,21 +370,22 @@ export default function ProfilePage() {
       await deleteDoc(doc(db, 'users', currentUser.uid, 'addresses', addressId));
       toast({ title: "آدرس حذف شد", description: "آدرس مورد نظر با موفقیت حذف شد." });
       
-      // If the deleted address was default, make another one default if possible
-      if (addressToDelete?.isDefault) {
-        const remainingAddresses = addresses.filter(addr => addr.id !== addressId);
-        if (remainingAddresses.length > 0 && !remainingAddresses.some(addr => addr.isDefault)) {
-            await handleSetDefaultAddress(remainingAddresses[0].id, false); // Set new default without refetching yet
-        }
+      let newAddresses = addresses.filter(addr => addr.id !== addressId);
+      if (addressToDelete?.isDefault && newAddresses.length > 0 && !newAddresses.some(addr => addr.isDefault)) {
+        const newDefaultAddress = newAddresses[0];
+        const addressRef = doc(db, 'users', currentUser.uid, 'addresses', newDefaultAddress.id);
+        await updateDoc(addressRef, { isDefault: true });
+        newAddresses = newAddresses.map(addr => addr.id === newDefaultAddress.id ? {...addr, isDefault: true} : addr);
       }
-      fetchAddresses(); // Refresh list after potential default change
+      setAddresses(newAddresses);
+
     } catch (error) {
       console.error("Error deleting address: ", error);
       toast({ title: "خطا در حذف آدرس", description: "مشکلی در حذف آدرس پیش آمد.", variant: "destructive" });
     }
   };
 
-  const handleSetDefaultAddress = async (addressId: string, shouldRefetchAddresses = true) => {
+  const handleSetDefaultAddress = async (addressId: string) => {
     if (!currentUser) return;
     const batch = writeBatch(db);
     addresses.forEach(addr => {
@@ -319,17 +395,14 @@ export default function ProfilePage() {
     try {
       await batch.commit();
       toast({ title: "آدرس پیش‌فرض تنظیم شد", description: "آدرس مورد نظر به عنوان پیش‌فرض تنظیم شد." });
-      if (shouldRefetchAddresses) {
-        fetchAddresses(); // Refresh the list
-      }
+      setAddresses(prevAddresses => prevAddresses.map(addr => ({...addr, isDefault: addr.id === addressId })));
     } catch (error) {
       console.error("Error setting default address: ", error);
       toast({ title: "خطا", description: "مشکلی در تنظیم آدرس پیش‌فرض پیش آمد.", variant: "destructive" });
     }
   };
 
-  const getOrderStatusBadgeVariant = (status: Order['status']): "default" | "secondary" | "outline" | "destructive" => {
-    // ... (same as before)
+  const getOrderStatusBadgeVariant = (status: OrderDocument['status']): "default" | "secondary" | "outline" | "destructive" => {
      switch (status) {
       case 'تحویل داده شده': return "default";
       case 'ارسال شده': return "secondary";
@@ -339,7 +412,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || (!currentUser && !authLoading && profile === null) ) {
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -371,6 +444,10 @@ export default function ProfilePage() {
       </div>
     );
   }
+  
+  const formatOrderPrice = (price: number): string => {
+    return `${price.toLocaleString('fa-IR')} تومان`;
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -378,7 +455,7 @@ export default function ProfilePage() {
       <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8 text-center">
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">
-            پروفایل کاربری {profile.fullName}
+            پروفایل کاربری {profile?.fullName || currentUser?.displayName || ''}
           </h1>
           <p className="mt-2 text-lg text-muted-foreground">
             اطلاعات حساب خود را مدیریت کنید و سفارش‌هایتان را پیگیری نمایید.
@@ -391,22 +468,22 @@ export default function ProfilePage() {
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-3"> <User className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">اطلاعات شخصی</CardTitle> </div>
-                {!isEditingInfo ? ( <Button variant="outline" size="sm" onClick={() => setIsEditingInfo(true)}> <Edit3 className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ویرایش </Button> ) : (
+                {!isEditingInfo ? ( <Button variant="outline" size="sm" onClick={() => { setIsEditingInfo(true); if(profile) setTempProfileData({fullName: profile.fullName || currentUser?.displayName || '', phoneNumber: profile.phoneNumber || ''})}}> <Edit3 className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ویرایش </Button> ) : (
                   <div className="flex gap-2"> <Button variant="default" size="sm" onClick={handleSaveInfo}> <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ذخیره </Button> <Button variant="ghost" size="sm" onClick={handleCancelEdit}> لغو </Button> </div>
                 )}
               </CardHeader>
               <CardContent className="space-y-4 pt-2">
                 {isEditingInfo ? (
                   <>
-                    <div> <Label htmlFor="fullName">نام و نام خانوادگی</Label> <Input id="fullName" name="fullName" value={tempProfile.fullName} onChange={handleInputChange} className="mt-1" /> </div>
-                    <div> <Label htmlFor="email">آدرس ایمیل (غیرقابل ویرایش)</Label> <Input id="email" name="email" type="email" value={tempProfile.email} dir="ltr" className="mt-1" disabled /> </div>
-                    <div> <Label htmlFor="phoneNumber">شماره تماس (ذخیره‌سازی نمایشی)</Label> <Input id="phoneNumber" name="phoneNumber" type="tel" value={tempProfile.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" /> <p className="text-xs text-muted-foreground mt-1">توجه: برای ذخیره شماره تماس، نیاز به پیاده‌سازی در پایگاه داده است.</p> </div>
+                    <div> <Label htmlFor="fullNameEdit">نام و نام خانوادگی</Label> <Input id="fullNameEdit" name="fullName" value={tempProfileData.fullName} onChange={handleInputChange} className="mt-1" /> </div>
+                    <div> <Label htmlFor="emailEdit">آدرس ایمیل (غیرقابل ویرایش)</Label> <Input id="emailEdit" name="email" type="email" value={profile?.email || currentUser?.email || ''} dir="ltr" className="mt-1" disabled /> </div>
+                    <div> <Label htmlFor="phoneNumberEdit">شماره تماس</Label> <Input id="phoneNumberEdit" name="phoneNumber" type="tel" value={tempProfileData.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" /> </div>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">نام و نام خانوادگی:</span> <span className="font-medium">{profile.fullName || "هنوز وارد نشده"}</span> </div>
-                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">آدرس ایمیل:</span> <span className="font-medium dir-ltr">{profile.email || "هنوز وارد نشده"}</span> </div>
-                    <div className="flex items-center justify-between py-2"> <span className="text-sm text-muted-foreground">شماره تماس:</span> <span className="font-medium dir-ltr">{profile.phoneNumber} (نمایشی)</span> </div>
+                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">نام و نام خانوادگی:</span> <span className="font-medium">{profile?.fullName || currentUser?.displayName || "هنوز وارد نشده"}</span> </div>
+                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">آدرس ایمیل:</span> <span className="font-medium dir-ltr">{profile?.email || currentUser?.email || "هنوز وارد نشده"}</span> </div>
+                    <div className="flex items-center justify-between py-2"> <span className="text-sm text-muted-foreground">شماره تماس:</span> <span className="font-medium dir-ltr">{profile?.phoneNumber || "ثبت نشده"}</span> </div>
                   </>
                 )}
               </CardContent>
@@ -451,17 +528,16 @@ export default function ProfilePage() {
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3"> <ShoppingBag className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle> </CardHeader>
               <CardContent>
-                <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 text-blue-700"> <Info className="h-5 w-5 !text-blue-700" /> <AlertTitle className="font-semibold">توجه: داده‌های نمایشی</AlertTitle> <AlertDescription> لیست سفارش‌ها در این بخش بر اساس شناسه کاربر وارد شده از داده‌های نمونه فیلتر شده است. برای مشاهده سفارش‌ها، اطمینان حاصل کنید که UID کاربر فعلی شما در فایل `src/data/orders.ts` به عنوان `userId` برای برخی سفارش‌ها تنظیم شده باشد. </AlertDescription> </Alert>
-                {authLoading ? ( <div className="text-center py-4"> <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" /> <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p> </div>
+                {isLoadingOrders ? ( <div className="text-center py-4"> <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" /> <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p> </div>
                 ) : userOrders.length > 0 ? (
                   <Table>
                     <TableHeader> <TableRow> <TableHead>شناسه سفارش</TableHead> <TableHead className="hidden sm:table-cell">تاریخ</TableHead> <TableHead>مبلغ کل</TableHead> <TableHead>وضعیت</TableHead> <TableHead className="text-left">جزئیات</TableHead> </TableRow> </TableHeader>
                     <TableBody>
                       {userOrders.map((order) => (
                         <TableRow key={order.id}>
-                          <TableCell className="font-mono text-xs">{order.id}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{order.date}</TableCell>
-                          <TableCell>{order.totalAmount}</TableCell>
+                          <TableCell className="font-mono text-xs">{order.paymentDetails?.orderId || order.id}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{(order.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'}</TableCell>
+                          <TableCell>{formatOrderPrice(order.totalAmount)}</TableCell>
                           <TableCell> <Badge variant={getOrderStatusBadgeVariant(order.status)} className={ order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }> {order.status} </Badge> </TableCell>
                           <TableCell className="text-left"> <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}> <Eye className="h-4 w-4" /> <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span> </Button> </TableCell>
                         </TableRow>
@@ -491,14 +567,13 @@ export default function ProfilePage() {
             </Card>
             
             <Card className="shadow-lg">
-                <CardHeader className="flex items-center gap-3"> <ShieldCheck className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حریم خصوصی (نمایشی)</CardTitle> </CardHeader>
+                <CardHeader className="flex items-center gap-3"> <ShieldCheck className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle> </CardHeader>
                 <CardContent className="space-y-5 pt-3">
-                    <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800"> <Info className="h-5 w-5 !text-yellow-700" /> <AlertTitle className="font-semibold">توجه: تنظیمات نمایشی</AlertTitle> <AlertDescription> این تنظیمات صرفاً جنبه نمایشی دارند و در حال حاضر در هیچ پایگاه داده‌ای ذخیره نمی‌شوند و تاثیری بر عملکرد سایت ندارند. </AlertDescription> </Alert>
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label> <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را مشاهده کنند.</p> </div> <Switch id="showPublicProfile" checked={showPublicProfile} onCheckedChange={setShowPublicProfile} aria-label="نمایش پروفایل عمومی" /> </div> <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label> <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p> </div> <Switch id="receiveNewsletter" checked={receiveNewsletter} onCheckedChange={setReceiveNewsletter} aria-label="دریافت خبرنامه" /> </div> <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت با شرکای تجاری</Label> <p className="text-xs text-muted-foreground mt-0.5">اجازه به اشتراک‌گذاری فعالیت شما برای دریافت پیشنهادات شخصی‌سازی شده.</p> </div> <Switch id="shareActivity" checked={shareActivity} onCheckedChange={setShareActivity} aria-label="اشتراک‌گذاری فعالیت" /> </div>
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label> <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p> </div> <Switch id="showPublicProfile" checked={privacySettings.showPublicProfile} onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)} aria-label="نمایش پروفایل عمومی" disabled={isSavingPrivacy} /> </div> <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label> <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p> </div> <Switch id="receiveNewsletter" checked={privacySettings.receiveNewsletter} onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)} aria-label="دریافت خبرنامه" disabled={isSavingPrivacy} /> </div>
+                    {/* Add other privacy settings similarly */}
                 </CardContent>
-                <CardFooter> <p className="text-xs text-muted-foreground">برای اعمال واقعی این تنظیمات، نیاز به توسعه بک‌اند و اتصال به پایگاه داده می‌باشد.</p> </CardFooter>
+                <CardFooter> <p className="text-xs text-muted-foreground">تغییرات تنظیمات حریم خصوصی در پایگاه داده ذخیره می‌شود.</p> </CardFooter>
             </Card>
           </div>
         </div>
@@ -506,7 +581,7 @@ export default function ProfilePage() {
 
       <Dialog open={!!selectedOrder} onOpenChange={(isOpen) => !isOpen && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80svh] flex flex-col">
-          {selectedOrder && ( <> <DialogHeader> <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.id}</DialogTitle> <DialogDescription> تاریخ ثبت: {selectedOrder.date} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)} className={ selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }>{selectedOrder.status}</Badge> </DialogDescription> </DialogHeader> <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3"> <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4> {selectedOrder.items.map(item => ( <div key={item.id} className="flex items-center gap-3 border-b pb-2"> {item.imageUrl && ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0"> <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={item.imageHint || "product"} /> </div> )} <div className="flex-grow"> <p className="font-medium text-sm">{item.name}</p> <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p> <p className="text-xs text-muted-foreground">قیمت واحد: {item.price}</p> </div> <p className="text-sm font-semibold">{ (parseInt(item.price.replace(/[^\\d]/g, '')) * item.quantity).toLocaleString('fa-IR') } تومان</p> </div> ))} {selectedOrder.shippingAddress && ( <div className="pt-3"> <h4 className="font-semibold mb-1">آدرس ارسال:</h4> <p className="text-sm text-muted-foreground">{selectedOrder.shippingAddress}</p> </div> )} <Separator className="my-3" /> <div className="flex justify-between items-center font-bold text-md"> <span>مبلغ کل سفارش:</span> <span>{selectedOrder.totalAmount}</span> </div> </div> <DialogFooter className="mt-auto pt-4 border-t"> <DialogClose asChild> <Button type="button" variant="outline">بستن</Button> </DialogClose> </DialogFooter> </> )} </DialogContent>
+          {selectedOrder && ( <> <DialogHeader> <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle> <DialogDescription> تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)} className={ selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }>{selectedOrder.status}</Badge> </DialogDescription> </DialogHeader> <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3"> <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4> {selectedOrder.items.map((item: OrderItem) => ( <div key={item.productId} className="flex items-center gap-3 border-b pb-2"> {item.imageUrl && ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0"> <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} /> </div> )} <div className="flex-grow"> <p className="font-medium text-sm">{item.name}</p> <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p> <p className="text-xs text-muted-foreground">قیمت واحد: {formatOrderPrice(item.price)}</p> </div> <p className="text-sm font-semibold">{ formatOrderPrice(item.price * item.quantity) }</p> </div> ))} {selectedOrder.shippingAddress && ( <div className="pt-3"> <h4 className="font-semibold mb-1">آدرس ارسال:</h4> <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p> </div> )} <Separator className="my-3" /> <div className="flex justify-between items-center font-bold text-md"> <span>مبلغ کل سفارش:</span> <span>{formatOrderPrice(selectedOrder.totalAmount)}</span> </div> </div> <DialogFooter className="mt-auto pt-4 border-t"> <DialogClose asChild> <Button type="button" variant="outline">بستن</Button> </DialogClose> </DialogFooter> </> )} </DialogContent>
       </Dialog>
 
        <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>

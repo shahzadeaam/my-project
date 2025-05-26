@@ -1,5 +1,5 @@
 
-'use client'; // Ensure this is a client component to use hooks
+'use client'; 
 
 import Link from 'next/link';
 import Header from '@/components/layout/header';
@@ -7,20 +7,14 @@ import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { CheckCircle2 } from 'lucide-react';
-import type { Metadata } from 'next';
-import { useSearchParams } from 'next/navigation'; // For reading query params
+import { useSearchParams } from 'next/navigation'; 
 import { Suspense } from 'react';
 
-// Metadata cannot be used in client components directly this way.
-// We'll keep it simple for now or move to a parent server component if strict metadata is needed.
-// export const metadata: Metadata = {
-//   title: 'سفارش شما با موفقیت ثبت شد - نیلوفر بوتیک',
-//   description: 'تاییدیه ثبت سفارش در نیلوفر بوتیک.',
-// };
 
 function OrderConfirmationContent() {
   const searchParams = useSearchParams();
-  const orderId = searchParams.get('orderId');
+  const mockOrderId = searchParams.get('orderId'); // This is the simulated ID
+  const firestoreDocId = searchParams.get('docId'); // This is the actual Firestore document ID
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -31,20 +25,22 @@ function OrderConfirmationContent() {
             <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 mb-5" />
             <CardTitle className="text-3xl font-bold text-foreground">سفارش شما با موفقیت ثبت شد!</CardTitle>
             <CardDescription className="text-muted-foreground text-lg mt-3">
-              از خرید شما سپاسگزاریم. {orderId ? `شماره سفارش شما: ${orderId}. ` : ''}جزئیات سفارش به ایمیل شما ارسال خواهد شد (نمایشی).
+              از خرید شما سپاسگزاریم. {mockOrderId ? `شماره سفارش پیگیری (نمایشی): ${mockOrderId}. ` : ''}
+              {firestoreDocId && <span className="block text-xs mt-1">(شناسه واقعی سفارش در پایگاه داده: {firestoreDocId})</span>}
+              جزئیات سفارش به ایمیل شما ارسال خواهد شد (نمایشی).
             </CardDescription>
           </CardHeader>
           <CardContent className="mt-4">
             <p className="text-muted-foreground mb-6">
-              می‌توانید برای مشاهده سایر محصولات به فروشگاه بازگردید یا وضعیت سفارش خود را (در صورت پیاده سازی) پیگیری نمایید.
+              می‌توانید برای مشاهده سایر محصولات به فروشگاه بازگردید یا وضعیت سفارش خود را در پروفایل کاربری پیگیری نمایید.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-3">
                 <Button asChild size="lg" className="px-8 py-3 text-base">
                     <Link href="/products">بازگشت به فروشگاه</Link>
                 </Button>
-                 {/* <Button asChild variant="outline" size="lg" className="px-8 py-3 text-base">
-                    <Link href="/profile/orders">پیگیری سفارش</Link>
-                 </Button> */}
+                 <Button asChild variant="outline" size="lg" className="px-8 py-3 text-base">
+                    <Link href="/profile">مشاهده سفارش‌ها در پروفایل</Link>
+                 </Button>
             </div>
           </CardContent>
            <CardFooter className="flex justify-center pt-6">
@@ -59,8 +55,7 @@ function OrderConfirmationContent() {
 
 export default function OrderConfirmationPage() {
   return (
-    // Suspense is needed because useSearchParams() is a client hook that might suspend.
-    <Suspense fallback={<div>در حال بارگذاری...</div>}>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">در حال بارگذاری...</div>}>
       <OrderConfirmationContent />
     </Suspense>
   );

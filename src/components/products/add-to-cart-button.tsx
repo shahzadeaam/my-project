@@ -1,14 +1,15 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/cart-context';
-import type { Product } from '@/data/products';
+import type { Product } from '@/types/firestore'; // Updated import
 import { ShoppingCart, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect, useCallback } from 'react';
 
 interface AddToCartButtonProps {
-  product: Product;
+  product: Product; // Expects Product type with price as number
 }
 
 export default function AddToCartButton({ product }: AddToCartButtonProps) {
@@ -26,16 +27,17 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
 
 
   const handleAddToCart = () => {
-    if (checkProductInCart()) return; // Already in cart, do nothing (button should be disabled)
+    if (checkProductInCart()) return; 
 
     setIsAddedOrProcessing(true);
-    addItem(product, 1);
+    // addItem expects Product type where price is number
+    addItem(product, 1); 
     toast({
       title: "محصول به سبد خرید اضافه شد",
       description: `"${product.name}" با موفقیت به سبد شما اضافه شد.`,
       variant: "default",
     });
-    // Visual feedback, but the actual "added" state comes from context via checkProductInCart
+    
     setTimeout(() => {
         setIsAddedOrProcessing(checkProductInCart());
     }, 1500); 
@@ -48,7 +50,7 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
       onClick={handleAddToCart} 
       size="lg" 
       className="w-full md:w-auto bg-accent text-accent-foreground hover:bg-accent/90 transition-all duration-300"
-      disabled={isInCart || isAddedOrProcessing && !isInCart} // Disable if in cart, or if processing adding (and not yet in cart from context)
+      disabled={isInCart || (isAddedOrProcessing && !isInCart)} 
     >
       {isInCart ? (
         <>

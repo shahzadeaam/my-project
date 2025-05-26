@@ -2,7 +2,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp, type FirebaseOptions } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore"; // Import Firestore
+import { getFirestore, Timestamp } from "firebase/firestore"; // Import Firestore and Timestamp
 
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -30,4 +30,4 @@ if (!getApps().length) {
 const auth = getAuth(app);
 const db = getFirestore(app); // Initialize Firestore
 
-export { app, auth, db }; // Export db
+export { app, auth, db, Timestamp }; // Export db and Timestamp

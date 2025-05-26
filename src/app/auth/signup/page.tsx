@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,10 +12,12 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase'; 
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Added updateProfile
+import { auth, db, Timestamp } from '@/lib/firebase'; 
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
+import type { UserProfileDocument } from '@/types/firestore';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -30,30 +32,46 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setIsLoading(true);
+    
 
     if (password !== confirmPassword) {
       setError('رمز عبور و تکرار آن با هم تطابق ندارند.');
-      setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
       setError('رمز عبور باید حداقل ۶ کاراکتر باشد.');
-      setIsLoading(false);
       return;
     }
-
+    setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Set display name
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
+      const user = userCredential.user;
+
+      // Set display name in Firebase Auth
+      if (user) {
+        await updateProfile(user, {
           displayName: fullName,
         });
+
+        // Create user document in Firestore
+        const userDocRef = doc(db, 'users', user.uid);
+        const newUserProfile: UserProfileDocument = {
+          uid: user.uid,
+          fullName: fullName,
+          email: user.email || '',
+          phoneNumber: '', // Initialize as empty or get from form if added
+          privacySettings: { // Default privacy settings
+            showPublicProfile: false,
+            receiveNewsletter: true,
+          },
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+        await setDoc(userDocRef, newUserProfile);
       }
       
       toast({

@@ -1,10 +1,24 @@
+
 import ProductCard from '@/components/products/product-card';
-import { products } from '@/data/products'; // Import products from the main data source
+import type { Product } from '@/types/firestore'; // Updated import
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 
-// Select a subset of products to be featured, e.g., the first 4
-const featuredProductsData = products.slice(0, 4);
+async function getFeaturedProducts(): Promise<Product[]> {
+  const productsCol = collection(db, 'products');
+  // Fetch, for example, the 4 most recently created products
+  const q = query(productsCol, orderBy('createdAt', 'desc'), firestoreLimit(4));
+  const productsSnapshot = await getDocs(q);
+  const productList = productsSnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Product));
+  return productList;
+}
 
-export default function FeaturedProducts() {
+export default async function FeaturedProducts() {
+  const featuredProductsData = await getFeaturedProducts();
+
   return (
     <section className="py-12 bg-background sm:py-16 lg:py-20">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -23,14 +37,14 @@ export default function FeaturedProducts() {
                 key={product.id}
                 id={product.id}
                 name={product.name}
-                price={product.price}
+                price={product.price.toLocaleString('fa-IR') + ' تومان'} // Format price
                 imageUrl={product.imageUrl}
                 imageHint={product.imageHint}
               />
             ))}
           </div>
         ) : (
-          <p className="text-center text-muted-foreground">محصول ویژه‌ای برای نمایش وجود ندارد.</p>
+          <p className="text-center text-muted-foreground">محصول ویژه‌ای برای نمایش وجود ندارد. (مطمئن شوید محصولات در Firestore با فیلد createdAt اضافه شده‌اند)</p>
         )}
       </div>
     </section>

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useCart, type CartItem as CartItemType } from '@/context/cart-context';
+import { useCart, type CartItem as CartItemType } from '@/context/cart-context'; // CartItemType now has price as number
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -30,13 +30,8 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
     onUpdateQuantity(item.id, Math.max(0, item.quantity - 1));
   };
   
-  const parsePrice = (priceString: string): number => {
-    const cleanedString = priceString.replace(/[^\d]/g, '');
-    return parseInt(cleanedString, 10) || 0;
-  };
-
-  const itemPrice = parsePrice(item.price);
-  const totalPriceForItem = itemPrice * item.quantity;
+  // item.price is now a number
+  const totalPriceForItem = item.price * item.quantity;
   
   const formatPrice = (price: number): string => {
     return `${price.toLocaleString('fa-IR')} تومان`;
@@ -53,7 +48,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
           <Link href={`/products/${item.id}`} className="text-md sm:text-lg font-semibold hover:text-primary transition-colors line-clamp-2">
             {item.name}
           </Link>
-          <p className="text-sm text-muted-foreground mt-1">{item.price}</p>
+          <p className="text-sm text-muted-foreground mt-1">{formatPrice(item.price)}</p> {/* Format price for display */}
         </div>
         <div className="flex items-center gap-2 mt-2 sm:mt-0">
           <Button variant="outline" size="icon" onClick={decrementQuantity} aria-label="کاهش تعداد" className="h-9 w-9 sm:h-10 sm:w-10">
@@ -87,13 +82,9 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
 export default function CartContents() {
   const { items, updateItemQuantity, removeItem, clearCart } = useCart();
 
-  const parsePrice = (priceString: string): number => {
-    const cleanedString = priceString.replace(/[^\d]/g, '');
-    return parseInt(cleanedString, 10) || 0;
-  };
-
+  // items in cart now have price as number
   const cartTotal = items.reduce((total, item) => {
-    return total + (parsePrice(item.price) * item.quantity);
+    return total + (item.price * item.quantity);
   }, 0);
   
   const formatPrice = (price: number): string => {
@@ -152,4 +143,3 @@ export default function CartContents() {
     </div>
   );
 }
-

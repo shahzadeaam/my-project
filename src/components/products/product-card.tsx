@@ -1,12 +1,14 @@
+
 import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+// No direct Product import needed here if props are explicit
 
 interface ProductCardProps {
   id: string;
   name: string;
-  price: string;
+  price: string; // Price is already formatted as string for display
   imageUrl: string;
   imageHint?: string;
 }

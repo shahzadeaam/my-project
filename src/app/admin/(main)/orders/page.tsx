@@ -1,30 +1,124 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PackageSearch } from 'lucide-react';
+import { PackageSearch, Loader2 } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy, Timestamp as FirestoreTimestamp } from 'firebase/firestore'; // Renamed Timestamp
+import type { OrderDocument } from '@/types/firestore';
+import Link from 'next/link';
 
-export default function AdminOrdersPage() {
+async function getOrdersFromFirestore(): Promise<OrderDocument[]> {
+  const ordersCol = collection(db, 'orders');
+  const ordersSnapshot = await getDocs(query(ordersCol, orderBy('createdAt', 'desc')));
+  const orderList = ordersSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      userId: data.userId,
+      items: data.items,
+      totalAmount: data.totalAmount,
+      status: data.status,
+      customerInfo: data.customerInfo,
+      shippingAddress: data.shippingAddress,
+      paymentDetails: data.paymentDetails,
+      createdAt: data.createdAt, // Firestore Timestamp
+      updatedAt: data.updatedAt, // Firestore Timestamp
+    } as OrderDocument;
+  });
+  return orderList;
+}
+
+const getOrderStatusBadgeVariant = (status: OrderDocument['status']): "default" | "secondary" | "outline" | "destructive" => {
+  switch (status) {
+    case 'تحویل داده شده': return "default"; // Usually green-ish
+    case 'ارسال شده': return "secondary"; // Usually blue-ish
+    case 'در حال پردازش': return "outline"; // Usually yellow-ish or neutral
+    case 'لغو شده': return "destructive"; // Usually red-ish
+    default: return "outline";
+  }
+};
+
+const formatOrderPrice = (price: number): string => {
+  return `${price.toLocaleString('fa-IR')} تومان`;
+};
+
+export default async function AdminOrdersPage() {
+  const orders = await getOrdersFromFirestore();
+
   return (
     <div className="space-y-6">
         <div>
             <h2 className="text-2xl font-semibold tracking-tight">مدیریت سفارش‌ها</h2>
             <p className="text-sm text-muted-foreground">
-                مشاهده و پیگیری سفارش‌های ثبت شده در فروشگاه.
+                مشاهده و پیگیری سفارش‌های ثبت شده در فروشگاه. (تغییر وضعیت هنوز پیاده‌سازی نشده)
             </p>
         </div>
-        <Card className="min-h-[400px] flex flex-col items-center justify-center">
-            <CardHeader className="text-center">
-            <PackageSearch className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-            <CardTitle className="text-xl">بخش مدیریت سفارش‌ها</CardTitle>
-            <CardDescription className="text-muted-foreground">
-                این بخش به زودی تکمیل خواهد شد. در اینجا می‌توانید لیست سفارش‌ها، جزئیات آن‌ها و وضعیتشان را مدیریت کنید.
-            </CardDescription>
-            </CardHeader>
-            <CardContent>
-            <p className="text-sm text-muted-foreground">
-                (نمایش جدول سفارش‌ها، فیلترها، و امکان تغییر وضعیت در اینجا قرار خواهد گرفت.)
-            </p>
-            </CardContent>
-        </Card>
+        {orders.length > 0 ? (
+            <Card>
+                <CardHeader>
+                    <CardTitle>لیست سفارش‌ها</CardTitle>
+                    <CardDescription>در مجموع {orders.length} سفارش در سیستم موجود است.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>شناسه سفارش (داخلی)</TableHead>
+                                <TableHead>شماره پیگیری (نمایشی)</TableHead>
+                                <TableHead className="hidden sm:table-cell">مشتری</TableHead>
+                                <TableHead>مبلغ کل</TableHead>
+                                <TableHead className="hidden md:table-cell">تاریخ</TableHead>
+                                <TableHead>وضعیت</TableHead>
+                                <TableHead className="text-left">عملیات (بزودی)</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {orders.map((order) => (
+                                <TableRow key={order.id}>
+                                    <TableCell className="font-mono text-xs">{order.id}</TableCell>
+                                    <TableCell className="font-mono text-xs">{order.paymentDetails?.orderId || '-'}</TableCell>
+                                    <TableCell className="hidden sm:table-cell">
+                                        <div>{order.customerInfo.fullName}</div>
+                                        <div className="text-xs text-muted-foreground dir-ltr">{order.customerInfo.email}</div>
+                                    </TableCell>
+                                    <TableCell>{formatOrderPrice(order.totalAmount)}</TableCell>
+                                    <TableCell className="hidden md:table-cell">
+                                        {(order.createdAt as FirestoreTimestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant={getOrderStatusBadgeVariant(order.status)}
+                                            className={
+                                                order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                                                order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                                order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                                                order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                                            }
+                                        >
+                                            {order.status}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-left">
+                                        {/* Placeholder for actions like view details, change status */}
+                                        <Button variant="ghost" size="sm" disabled>مشاهده</Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        ) : (
+            <Card className="min-h-[400px] flex flex-col items-center justify-center">
+                <CardHeader className="text-center">
+                <PackageSearch className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+                <CardTitle className="text-xl">هیچ سفارشی یافت نشد</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                    در حال حاضر هیچ سفارشی در پایگاه داده ثبت نشده است.
+                </CardDescription>
+                </CardHeader>
+            </Card>
+        )}
     </div>
   );
 }

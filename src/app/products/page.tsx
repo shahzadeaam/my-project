@@ -2,7 +2,9 @@
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import ProductCard from '@/components/products/product-card';
-import { products } from '@/data/products';
+import type { Product } from '@/types/firestore'; // Updated import
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -10,7 +12,20 @@ export const metadata: Metadata = {
   description: 'مجموعه‌ای از بهترین و جدیدترین محصولات نیلوفر بوتیک.',
 };
 
-export default function ProductsPage() {
+async function getProducts(): Promise<Product[]> {
+  const productsCol = collection(db, 'products');
+  // You can add orderBy or limit here if needed, e.g., orderBy('createdAt', 'desc')
+  const productsSnapshot = await getDocs(query(productsCol, orderBy('createdAt', 'desc')));
+  const productList = productsSnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Product));
+  return productList;
+}
+
+export default async function ProductsPage() {
+  const products = await getProducts();
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
@@ -30,7 +45,7 @@ export default function ProductsPage() {
                 key={product.id}
                 id={product.id}
                 name={product.name}
-                price={product.price}
+                price={product.price.toLocaleString('fa-IR') + ' تومان'} // Format price
                 imageUrl={product.imageUrl}
                 imageHint={product.imageHint}
               />
@@ -39,7 +54,7 @@ export default function ProductsPage() {
         ) : (
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground">
-              در حال حاضر محصولی برای نمایش وجود ندارد.
+              در حال حاضر محصولی برای نمایش وجود ندارد. (مطمئن شوید محصولات در Firestore اضافه شده‌اند)
             </p>
           </div>
         )}

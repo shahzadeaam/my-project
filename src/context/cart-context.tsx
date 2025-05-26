@@ -1,9 +1,11 @@
+
 'use client';
 
-import type { Product } from '@/data/products';
+import type { Product } from '@/types/firestore'; // Updated to use Firestore Product type
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useEffect, useReducer, useCallback } from 'react';
 
+// CartItem now uses the Product type from firestore.ts which has price as number
 export interface CartItem extends Product {
   quantity: number;
 }
@@ -85,7 +87,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Failed to load cart from localStorage", error);
-      // Fallback to empty cart if localStorage is corrupt or inaccessible
       dispatch({ type: 'LOAD_CART', items: [] });
     }
   }, []);
