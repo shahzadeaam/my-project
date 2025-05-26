@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { AlertCircle, CreditCard, ShoppingBag, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useEffect, useState } from 'react';
+import { useToast } from '@/hooks/use-toast'; // Added useToast
 
 const checkoutFormSchema = z.object({
   fullName: z.string().min(3, { message: 'نام و نام خانوادگی باید حداقل ۳ حرف باشد.' }),
@@ -58,6 +59,7 @@ function OrderSummaryItem({ item }: { item: CartItemType }) {
 export default function CheckoutPage() {
   const { items, clearCart } = useCart();
   const router = useRouter();
+  const { toast } = useToast(); // Initialized useToast
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -88,6 +90,8 @@ export default function CheckoutPage() {
     setIsProcessing(true);
     setPaymentStatus('idle');
     console.log('Checkout data:', data);
+    const mockOrderId = `ORD-${Date.now().toString().slice(-6)}`;
+
 
     // Simulate payment gateway interaction
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -97,10 +101,19 @@ export default function CheckoutPage() {
 
     if (paymentSuccessful) {
       setPaymentStatus('success');
+      
+      // Simulate admin notification
+      toast({
+        title: "اطلاع به ادمین (نمایشی)",
+        description: `یک سفارش جدید با موفقیت ثبت شد. شماره سفارش: ${mockOrderId}`,
+        variant: "default",
+        duration: 5000, // Show for 5 seconds
+      });
+
       // Normally, order details would be sent to a backend here
       // And then cart would be cleared upon successful backend confirmation
       clearCart();
-      router.push('/order-confirmation'); 
+      router.push(`/order-confirmation?orderId=${mockOrderId}`); 
     } else {
       setPaymentStatus('error');
       setIsProcessing(false);

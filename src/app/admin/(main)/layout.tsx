@@ -13,7 +13,7 @@ import {
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Home, LayoutGrid, ShoppingBag, Users, Settings, LogOut, Bell, UserCircle } from 'lucide-react';
+import { Home, LayoutGrid, ShoppingBag, Users, Settings, LogOut, Bell, UserCircle, BellRing } from 'lucide-react'; // Added BellRing
 import Logo from '@/components/common/logo';
 import Link from 'next/link';
 import AdminHeader from '@/components/admin/admin-header';
@@ -27,7 +27,8 @@ const navItems = [
   { href: '/admin/products', label: 'محصولات', icon: ShoppingBag },
   { href: '/admin/orders', label: 'سفارش‌ها', icon: Home }, // Using Home as placeholder
   { href: '/admin/users', label: 'کاربران', icon: Users },
-  { href: '/admin/settings', label: 'تنظیمات', icon: Settings }, // Placeholder
+  { href: '/admin/notifications', label: 'تنظیمات اطلاع‌رسانی', icon: BellRing }, // Added Notification Settings
+  { href: '/admin/settings', label: 'تنظیمات عمومی', icon: Settings },
 ];
 
 export default function AdminMainLayout({ children }: AdminLayoutProps) {

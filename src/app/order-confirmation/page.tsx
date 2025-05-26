@@ -1,4 +1,6 @@
 
+'use client'; // Ensure this is a client component to use hooks
+
 import Link from 'next/link';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
@@ -6,13 +8,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { CheckCircle2 } from 'lucide-react';
 import type { Metadata } from 'next';
+import { useSearchParams } from 'next/navigation'; // For reading query params
+import { Suspense } from 'react';
 
-export const metadata: Metadata = {
-  title: 'سفارش شما با موفقیت ثبت شد - نیلوفر بوتیک',
-  description: 'تاییدیه ثبت سفارش در نیلوفر بوتیک.',
-};
+// Metadata cannot be used in client components directly this way.
+// We'll keep it simple for now or move to a parent server component if strict metadata is needed.
+// export const metadata: Metadata = {
+//   title: 'سفارش شما با موفقیت ثبت شد - نیلوفر بوتیک',
+//   description: 'تاییدیه ثبت سفارش در نیلوفر بوتیک.',
+// };
 
-export default function OrderConfirmationPage() {
+function OrderConfirmationContent() {
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get('orderId');
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
@@ -22,7 +31,7 @@ export default function OrderConfirmationPage() {
             <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 mb-5" />
             <CardTitle className="text-3xl font-bold text-foreground">سفارش شما با موفقیت ثبت شد!</CardTitle>
             <CardDescription className="text-muted-foreground text-lg mt-3">
-              از خرید شما سپاسگزاریم. جزئیات سفارش به ایمیل شما ارسال خواهد شد.
+              از خرید شما سپاسگزاریم. {orderId ? `شماره سفارش شما: ${orderId}. ` : ''}جزئیات سفارش به ایمیل شما ارسال خواهد شد (نمایشی).
             </CardDescription>
           </CardHeader>
           <CardContent className="mt-4">
@@ -48,3 +57,11 @@ export default function OrderConfirmationPage() {
   );
 }
 
+export default function OrderConfirmationPage() {
+  return (
+    // Suspense is needed because useSearchParams() is a client hook that might suspend.
+    <Suspense fallback={<div>در حال بارگذاری...</div>}>
+      <OrderConfirmationContent />
+    </Suspense>
+  );
+}
