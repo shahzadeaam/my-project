@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff, MapPin, PlusCircle, Trash2 } from 'lucide-react';
+import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff, MapPin, PlusCircle, Trash2, ShieldCheck } from 'lucide-react';
 import { mockOrders, type Order } from '@/data/orders';
 import Image from 'next/image';
 import {
@@ -22,7 +22,6 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth } from '@/context/auth-context';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
@@ -31,6 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
 
 interface UserProfile {
@@ -91,6 +91,11 @@ export default function ProfilePage() {
     phoneNumber: '',
   });
 
+  // State for privacy settings (mock)
+  const [showPublicProfile, setShowPublicProfile] = useState(false);
+  const [receiveNewsletter, setReceiveNewsletter] = useState(true);
+  const [shareActivity, setShareActivity] = useState(false);
+
 
   useEffect(() => {
     if (currentUser) {
@@ -138,7 +143,7 @@ export default function ProfilePage() {
 
       setProfile({
         fullName: tempProfile.fullName,
-        email: tempProfile.email,
+        email: tempProfile.email, // Email is not editable but keep it in profile state
         phoneNumber: tempProfile.phoneNumber,
       });
       toast({ title: "اطلاعات ذخیره شد", description: "نام و نام خانوادگی شما به‌روزرسانی شد." });
@@ -332,6 +337,7 @@ export default function ProfilePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-3 space-y-8">
+            {/* Personal Information Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -389,6 +395,7 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
+            {/* Address Management Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                  <div className="flex items-center gap-3">
@@ -442,6 +449,7 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
+            {/* Order History Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3">
                 <ShoppingBag className="h-6 w-6 text-primary" />
@@ -504,6 +512,7 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
+            {/* Account Settings Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3">
                 <Settings className="h-6 w-6 text-primary" />
@@ -590,19 +599,74 @@ export default function ProfilePage() {
                     </div>
                   </form>
                 )}
-                <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
-                  <User className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                  تنظیمات حریم خصوصی (به زودی)
-                </Button>
               </CardContent>
-              <CardFooter>
-                <p className="text-xs text-muted-foreground">این بخش‌ها در آینده تکمیل خواهند شد.</p>
-              </CardFooter>
             </Card>
+            
+            {/* Privacy Settings Card (Mock) */}
+            <Card className="shadow-lg">
+                <CardHeader className="flex items-center gap-3">
+                    <ShieldCheck className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-2xl">تنظیمات حریم خصوصی (نمایشی)</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-3">
+                    <Alert variant="default" className="bg-yellow-50 border-yellow-200 text-yellow-800">
+                        <Info className="h-5 w-5 !text-yellow-700" />
+                        <AlertTitle className="font-semibold">توجه: تنظیمات نمایشی</AlertTitle>
+                        <AlertDescription>
+                            این تنظیمات صرفاً جنبه نمایشی دارند و در حال حاضر در هیچ پایگاه داده‌ای ذخیره نمی‌شوند و تاثیری بر عملکرد سایت ندارند.
+                        </AlertDescription>
+                    </Alert>
+
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                        <div>
+                            <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را مشاهده کنند.</p>
+                        </div>
+                        <Switch
+                            id="showPublicProfile"
+                            checked={showPublicProfile}
+                            onCheckedChange={setShowPublicProfile}
+                            aria-label="نمایش پروفایل عمومی"
+                        />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                         <div>
+                            <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p>
+                        </div>
+                        <Switch
+                            id="receiveNewsletter"
+                            checked={receiveNewsletter}
+                            onCheckedChange={setReceiveNewsletter}
+                            aria-label="دریافت خبرنامه"
+                        />
+                    </div>
+                     <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                         <div>
+                            <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت با شرکای تجاری</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">اجازه به اشتراک‌گذاری فعالیت شما برای دریافت پیشنهادات شخصی‌سازی شده.</p>
+                        </div>
+                        <Switch
+                            id="shareActivity"
+                            checked={shareActivity}
+                            onCheckedChange={setShareActivity}
+                            aria-label="اشتراک‌گذاری فعالیت"
+                        />
+                    </div>
+                </CardContent>
+                <CardFooter>
+                    <p className="text-xs text-muted-foreground">برای اعمال واقعی این تنظیمات، نیاز به توسعه بک‌اند می‌باشد.</p>
+                </CardFooter>
+            </Card>
+
+
           </div>
         </div>
       </main>
 
+      {/* Order Details Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(isOpen) => !isOpen && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80svh] flex flex-col">
           {selectedOrder && (
@@ -669,24 +733,24 @@ export default function ProfilePage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="recipientName" className="text-right col-span-1">نام گیرنده</Label>
-              <Input id="recipientName" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" />
+              <Label htmlFor="recipientNameDialog" className="text-right col-span-1">نام گیرنده</Label>
+              <Input id="recipientNameDialog" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="street" className="text-right col-span-1">آدرس پستی</Label>
-              <Textarea id="street" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" />
+              <Label htmlFor="streetDialog" className="text-right col-span-1">آدرس پستی</Label>
+              <Textarea id="streetDialog" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="city" className="text-right col-span-1">شهر</Label>
-              <Input id="city" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" />
+              <Label htmlFor="cityDialog" className="text-right col-span-1">شهر</Label>
+              <Input id="cityDialog" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="postalCode" className="text-right col-span-1">کد پستی</Label>
-              <Input id="postalCode" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+              <Label htmlFor="postalCodeDialog" className="text-right col-span-1">کد پستی</Label>
+              <Input id="postalCodeDialog" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
             </div>
              <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="addressPhoneNumber" className="text-right col-span-1">شماره تماس</Label>
-              <Input id="addressPhoneNumber" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+              <Label htmlFor="addressPhoneNumberDialog" className="text-right col-span-1">شماره تماس</Label>
+              <Input id="addressPhoneNumberDialog" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
             </div>
           </div>
           <DialogFooter>
@@ -701,6 +765,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-
-    
