@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useCart, type CartItem as CartItemType } from '@/context/cart-context';
@@ -5,7 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Trash2, Minus, Plus, ShoppingBag, AlertTriangle } from 'lucide-react';
+import { Trash2, Minus, Plus, ShoppingBag, AlertTriangle, CreditCard } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -17,8 +18,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
     if (!isNaN(newQuantity)) {
       onUpdateQuantity(item.id, Math.max(0, newQuantity));
     } else if (e.target.value === '') {
-        // Allow clearing the input, treat as 0 or handle as temp state
-        onUpdateQuantity(item.id, 0); // Or some other logic for empty input
+        onUpdateQuantity(item.id, 0); 
     }
   };
 
@@ -61,12 +61,13 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
           </Button>
           <Input
             type="number"
-            value={item.quantity.toString()} // Ensure value is string
+            value={item.quantity > 0 ? item.quantity.toString() : ''} 
             onChange={handleQuantityChange}
-            onBlur={(e) => { if(e.target.value === '' || parseInt(e.target.value) === 0) onUpdateQuantity(item.id, 0);}} // Remove if quantity is 0 or empty on blur
+            onBlur={(e) => { if(e.target.value === '' || parseInt(e.target.value) === 0) onUpdateQuantity(item.id, 0);}}
             className="w-12 sm:w-16 text-center h-9 sm:h-10"
             min="0"
             aria-label={`تعداد ${item.name}`}
+            placeholder="0"
           />
           <Button variant="outline" size="icon" onClick={incrementQuantity} aria-label="افزایش تعداد" className="h-9 w-9 sm:h-10 sm:w-10">
             <Plus className="h-4 w-4" />
@@ -133,8 +134,11 @@ export default function CartContents() {
                 <Trash2 className="ml-2 rtl:mr-2 h-4 w-4" />
                 پاک کردن سبد خرید
             </Button>
-            <Button size="lg" className="w-full sm:w-auto">
-                ادامه و تکمیل خرید
+            <Button asChild size="lg" className="w-full sm:w-auto">
+                <Link href="/checkout">
+                    <CreditCard className="ml-2 rtl:mr-2 h-5 w-5" />
+                    ادامه و تکمیل خرید
+                </Link>
             </Button>
         </div>
       </div>
@@ -148,3 +152,4 @@ export default function CartContents() {
     </div>
   );
 }
+
