@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2 } from 'lucide-react';
-import { mockOrders, type Order } from '@/data/orders'; 
+import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff } from 'lucide-react';
+import { mockOrders, type Order } from '@/data/orders';
 import Image from 'next/image';
 import {
   Dialog,
@@ -24,7 +24,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { useAuth } from '@/context/auth-context';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -34,35 +34,45 @@ import Link from 'next/link';
 interface UserProfile {
   fullName: string;
   email: string;
-  phoneNumber: string; 
+  phoneNumber: string;
 }
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [isEditingInfo, setIsEditingInfo] = useState(false);
-  
+
   const [profile, setProfile] = useState<UserProfile>({
     fullName: '',
     email: '',
-    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', 
+    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹',
   });
   const [tempProfile, setTempProfile] = useState<UserProfile>(profile);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [userOrders, setUserOrders] = useState<Order[]>([]);
+
+  // State for change password form
+  const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+
 
   useEffect(() => {
     if (currentUser) {
       const newProfileData = {
         fullName: currentUser.displayName || 'کاربر نمونه',
         email: currentUser.email || 'user@example.com',
-        phoneNumber: profile.phoneNumber, 
+        phoneNumber: profile.phoneNumber, // Keep mock phone number for now
       };
       setProfile(newProfileData);
       setTempProfile(newProfileData);
 
-      // Filter mock orders based on current user's UID
-      // In a real app, you'd fetch orders from a backend for currentUser.uid
       const filteredOrders = mockOrders.filter(order => order.userId === currentUser.uid);
       setUserOrders(filteredOrders);
 
@@ -74,7 +84,7 @@ export default function ProfilePage() {
       };
       setProfile(defaultProfile);
       setTempProfile(defaultProfile);
-      setUserOrders([]); // Clear orders if user logs out or is not loaded
+      setUserOrders([]);
     }
   }, [currentUser, authLoading, profile.phoneNumber]);
 
@@ -95,20 +105,20 @@ export default function ProfilePage() {
       if (tempProfile.fullName !== profile.fullName && auth.currentUser) {
         await updateProfile(auth.currentUser, { displayName: tempProfile.fullName });
       }
-      
+
       setProfile({
         fullName: tempProfile.fullName,
-        email: tempProfile.email, 
-        phoneNumber: tempProfile.phoneNumber, 
+        email: tempProfile.email,
+        phoneNumber: tempProfile.phoneNumber,
       });
       toast({ title: "اطلاعات ذخیره شد", description: "نام و نام خانوادگی شما به‌روزرسانی شد." });
       if (tempProfile.phoneNumber !== profile.phoneNumber) {
-         toast({ title: "توجه", description: "شماره تماس در حال حاضر به صورت نمایشی ذخیره می‌شود و در سرور به‌روز نمی‌شود.", variant: "default", duration: 7000});
+        toast({ title: "توجه", description: "شماره تماس در حال حاضر به صورت نمایشی ذخیره می‌شود و در سرور به‌روز نمی‌شود.", variant: "default", duration: 7000 });
       }
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل رخ داد.", variant: "destructive" });
-      setTempProfile(profile);
+      setTempProfile(profile); // Revert temp profile on error
     }
   };
 
@@ -116,15 +126,73 @@ export default function ProfilePage() {
     setTempProfile(profile);
     setIsEditingInfo(false);
   };
-  
+
+  const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordError(null);
+
+    if (!currentUser || !currentUser.email) {
+      setPasswordError("ابتدا باید وارد حساب کاربری خود شوید.");
+      return;
+    }
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setPasswordError("لطفاً تمام فیلدهای رمز عبور را پر کنید.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("رمز عبور جدید و تکرار آن با هم تطابق ندارند.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError("رمز عبور جدید باید حداقل ۶ کاراکتر باشد.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      // User re-authenticated successfully, now update password
+      await updatePassword(currentUser, newPassword);
+      toast({
+        title: "موفقیت",
+        description: "رمز عبور شما با موفقیت تغییر کرد.",
+        variant: "default",
+      });
+      setShowChangePasswordForm(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      let friendlyMessage = "خطایی در تغییر رمز عبور رخ داد. لطفاً دوباره تلاش کنید.";
+      if (error.code === 'auth/wrong-password') {
+        friendlyMessage = "رمز عبور فعلی شما نادرست است.";
+      } else if (error.code === 'auth/weak-password') {
+        friendlyMessage = "رمز عبور جدید ضعیف است. لطفاً رمز قوی‌تری انتخاب کنید.";
+      } else if (error.code === 'auth/too-many-requests') {
+        friendlyMessage = "تلاش‌های زیادی برای تغییر رمز عبور انجام شده است. لطفاً بعداً امتحان کنید.";
+      }
+      setPasswordError(friendlyMessage);
+      toast({
+        title: "خطا در تغییر رمز عبور",
+        description: friendlyMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+
   const getOrderStatusBadgeVariant = (status: Order['status']): "default" | "secondary" | "outline" | "destructive" => {
     switch (status) {
       case 'تحویل داده شده':
-        return "default"; 
+        return "default";
       case 'ارسال شده':
-        return "secondary"; 
+        return "secondary";
       case 'در حال پردازش':
-        return "outline"; 
+        return "outline";
       case 'لغو شده':
         return "destructive";
       default:
@@ -134,34 +202,34 @@ export default function ProfilePage() {
 
   if (authLoading) {
     return (
-        <div className="flex flex-col min-h-screen bg-background">
-            <Header />
-            <main className="flex-grow flex items-center justify-center">
-                <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-muted-foreground">در حال بارگذاری اطلاعات کاربر...</p>
-                </div>
-            </main>
-            <Footer />
-        </div>
+      <div className="flex flex-col min-h-screen bg-background">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">در حال بارگذاری اطلاعات کاربر...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
     );
   }
 
   if (!currentUser && !authLoading) {
-     return (
-        <div className="flex flex-col min-h-screen bg-background">
-            <Header />
-            <main className="flex-grow flex flex-col items-center justify-center text-center p-6">
-                <User className="h-16 w-16 text-muted-foreground mb-4" />
-                <h1 className="text-2xl font-semibold mb-2">صفحه پروفایل</h1>
-                <p className="text-muted-foreground mb-6">برای مشاهده و مدیریت پروفایل خود، لطفا ابتدا وارد شوید یا ثبت نام کنید.</p>
-                <div className="flex gap-4">
-                    <Button asChild><Link href="/auth/login">ورود</Link></Button>
-                    <Button variant="outline" asChild><Link href="/auth/signup">ثبت نام</Link></Button>
-                </div>
-            </main>
-            <Footer />
-        </div>
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        <Header />
+        <main className="flex-grow flex flex-col items-center justify-center text-center p-6">
+          <User className="h-16 w-16 text-muted-foreground mb-4" />
+          <h1 className="text-2xl font-semibold mb-2">صفحه پروفایل</h1>
+          <p className="text-muted-foreground mb-6">برای مشاهده و مدیریت پروفایل خود، لطفا ابتدا وارد شوید یا ثبت نام کنید.</p>
+          <div className="flex gap-4">
+            <Button asChild><Link href="/auth/login">ورود</Link></Button>
+            <Button variant="outline" asChild><Link href="/auth/signup">ثبت نام</Link></Button>
+          </div>
+        </main>
+        <Footer />
+      </div>
     );
   }
 
@@ -216,7 +284,7 @@ export default function ProfilePage() {
                     <div>
                       <Label htmlFor="phoneNumber">شماره تماس (ذخیره‌سازی نمایشی)</Label>
                       <Input id="phoneNumber" name="phoneNumber" type="tel" value={tempProfile.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" />
-                       <p className="text-xs text-muted-foreground mt-1">توجه: تغییرات شماره تماس در حال حاضر فقط در این صفحه نمایش داده می‌شود و در سرور ذخیره نمی‌گردد.</p>
+                      <p className="text-xs text-muted-foreground mt-1">توجه: تغییرات شماره تماس در حال حاضر فقط در این صفحه نمایش داده می‌شود و در سرور ذخیره نمی‌گردد.</p>
                     </div>
                   </>
                 ) : (
@@ -244,18 +312,18 @@ export default function ProfilePage() {
                 <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle>
               </CardHeader>
               <CardContent>
-                 <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 text-blue-700">
-                    <Info className="h-5 w-5 !text-blue-700" />
-                    <AlertTitle className="font-semibold">توجه: داده‌های نمایشی</AlertTitle>
-                    <AlertDescription>
-                      لیست سفارش‌ها در این بخش بر اساس شناسه کاربر وارد شده از داده‌های نمونه فیلتر شده است. برای مشاهده سفارش‌ها، اطمینان حاصل کنید که UID کاربر فعلی شما در فایل `src/data/orders.ts` به عنوان `userId` برای برخی سفارش‌ها تنظیم شده باشد.
-                    </AlertDescription>
+                <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 text-blue-700">
+                  <Info className="h-5 w-5 !text-blue-700" />
+                  <AlertTitle className="font-semibold">توجه: داده‌های نمایشی</AlertTitle>
+                  <AlertDescription>
+                    لیست سفارش‌ها در این بخش بر اساس شناسه کاربر وارد شده از داده‌های نمونه فیلتر شده است. برای مشاهده سفارش‌ها، اطمینان حاصل کنید که UID کاربر فعلی شما در فایل `src/data/orders.ts` به عنوان `userId` برای برخی سفارش‌ها تنظیم شده باشد.
+                  </AlertDescription>
                 </Alert>
                 {authLoading ? (
-                    <div className="text-center py-4">
-                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" />
-                        <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p>
-                    </div>
+                  <div className="text-center py-4">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" />
+                    <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p>
+                  </div>
                 ) : userOrders.length > 0 ? (
                   <Table>
                     <TableHeader>
@@ -274,21 +342,21 @@ export default function ProfilePage() {
                           <TableCell className="hidden sm:table-cell">{order.date}</TableCell>
                           <TableCell>{order.totalAmount}</TableCell>
                           <TableCell>
-                            <Badge variant={getOrderStatusBadgeVariant(order.status)} 
-                                   className={
-                                     order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
-                                     order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
-                                     order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
-                                     order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
-                                   }>
-                                {order.status}
+                            <Badge variant={getOrderStatusBadgeVariant(order.status)}
+                              className={
+                                order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                                  order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                    order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                                      order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                              }>
+                              {order.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-left">
-                              <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
-                                <Eye className="h-4 w-4" />
-                                <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
-                              </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
+                              <Eye className="h-4 w-4" />
+                              <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -306,22 +374,98 @@ export default function ProfilePage() {
                 <CardTitle className="text-2xl">تنظیمات حساب</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 pt-3">
-                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
+                {!showChangePasswordForm ? (
+                  <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" onClick={() => setShowChangePasswordForm(true)}>
                     <Lock className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    تغییر رمز عبور (به زودی)
+                    تغییر رمز عبور
+                  </Button>
+                ) : (
+                  <form onSubmit={handleChangePassword} className="space-y-4 border p-4 rounded-md bg-muted/20">
+                    <h3 className="text-lg font-semibold mb-2 text-foreground">تغییر رمز عبور</h3>
+                    {passwordError && (
+                      <Alert variant="destructive" className="mb-3">
+                        <Lock className="h-4 w-4" />
+                        <AlertTitle>خطا</AlertTitle>
+                        <AlertDescription>{passwordError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="currentPassword">رمز عبور فعلی</Label>
+                      <Input
+                        id="currentPassword"
+                        type={showCurrentPass ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        dir="ltr"
+                        className="pr-10"
+                        required
+                      />
+                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowCurrentPass(!showCurrentPass)}>
+                        {showCurrentPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="newPassword">رمز عبور جدید</Label>
+                      <Input
+                        id="newPassword"
+                        type={showNewPass ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        dir="ltr"
+                        className="pr-10"
+                        required
+                      />
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowNewPass(!showNewPass)}>
+                        {showNewPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="confirmNewPassword">تکرار رمز عبور جدید</Label>
+                      <Input
+                        id="confirmNewPassword"
+                        type={showConfirmPass ? "text" : "password"}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        dir="ltr"
+                        className="pr-10"
+                        required
+                      />
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPass(!showConfirmPass)}>
+                        {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button type="submit" disabled={isChangingPassword}>
+                        {isChangingPassword ? (
+                          <>
+                            <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" />
+                            در حال ذخیره...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" />
+                            ذخیره تغییرات رمز
+                          </>
+                        )}
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => { setShowChangePasswordForm(false); setPasswordError(null); setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword(''); }}>
+                        لغو
+                      </Button>
+                    </div>
+                  </form>
+                )}
+                <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
+                  <Settings className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
+                  مدیریت آدرس‌ها (به زودی)
                 </Button>
                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
-                    <Settings className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    مدیریت آدرس‌ها (به زودی)
-                </Button>
-                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
-                    <User className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    تنظیمات حریم خصوصی (به زودی)
+                  <User className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
+                  تنظیمات حریم خصوصی (به زودی)
                 </Button>
               </CardContent>
-               <CardFooter>
-                 <p className="text-xs text-muted-foreground">این بخش‌ها در آینده تکمیل خواهند شد.</p>
-               </CardFooter>
+              <CardFooter>
+                <p className="text-xs text-muted-foreground">این بخش‌ها در آینده تکمیل خواهند شد.</p>
+              </CardFooter>
             </Card>
           </div>
         </div>
@@ -335,12 +479,12 @@ export default function ProfilePage() {
                 <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.id}</DialogTitle>
                 <DialogDescription>
                   تاریخ ثبت: {selectedOrder.date} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)}
-                       className={
-                         selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
-                         selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
-                         selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
-                         selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
-                       }>{selectedOrder.status}</Badge>
+                    className={
+                      selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                        selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                          selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                            selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                    }>{selectedOrder.status}</Badge>
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3">
@@ -357,20 +501,20 @@ export default function ProfilePage() {
                       <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p>
                       <p className="text-xs text-muted-foreground">قیمت واحد: {item.price}</p>
                     </div>
-                     <p className="text-sm font-semibold">{ (parseInt(item.price.replace(/[^\d]/g, '')) * item.quantity).toLocaleString('fa-IR') } تومان</p>
+                    <p className="text-sm font-semibold">{ (parseInt(item.price.replace(/[^\d]/g, '')) * item.quantity).toLocaleString('fa-IR') } تومان</p>
                   </div>
                 ))}
                 {selectedOrder.shippingAddress && (
-                    <div className="pt-3">
-                        <h4 className="font-semibold mb-1">آدرس ارسال:</h4>
-                        <p className="text-sm text-muted-foreground">{selectedOrder.shippingAddress}</p>
-                    </div>
+                  <div className="pt-3">
+                    <h4 className="font-semibold mb-1">آدرس ارسال:</h4>
+                    <p className="text-sm text-muted-foreground">{selectedOrder.shippingAddress}</p>
+                  </div>
                 )}
-                 <Separator className="my-3" />
-                 <div className="flex justify-between items-center font-bold text-md">
-                    <span>مبلغ کل سفارش:</span>
-                    <span>{selectedOrder.totalAmount}</span>
-                 </div>
+                <Separator className="my-3" />
+                <div className="flex justify-between items-center font-bold text-md">
+                  <span>مبلغ کل سفارش:</span>
+                  <span>{selectedOrder.totalAmount}</span>
+                </div>
               </div>
               <DialogFooter className="mt-auto pt-4 border-t">
                 <DialogClose asChild>
