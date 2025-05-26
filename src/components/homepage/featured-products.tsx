@@ -1,11 +1,8 @@
 import ProductCard from '@/components/products/product-card';
+import { products } from '@/data/products'; // Import products from the main data source
 
-const featuredProductsData = [
-  { id: '1', name: 'لباس مجلسی شیک', price: '۱,۲۰۰,۰۰۰ تومان', imageUrl: 'https://placehold.co/300x300.png', imageHint: 'elegant dress' },
-  { id: '2', name: 'کیف دستی چرم', price: '۷۵۰,۰۰۰ تومان', imageUrl: 'https://placehold.co/300x301.png', imageHint: 'leather handbag' },
-  { id: '3', name: 'کفش پاشنه بلند', price: '۹۸۰,۰۰۰ تومان', imageUrl: 'https://placehold.co/301x300.png', imageHint: 'high heels' },
-  { id: '4', name: 'شال نخی طرحدار', price: '۳۲۰,۰۰۰ تومان', imageUrl: 'https://placehold.co/301x301.png', imageHint: 'patterned scarf' },
-];
+// Select a subset of products to be featured, e.g., the first 4
+const featuredProductsData = products.slice(0, 4);
 
 export default function FeaturedProducts() {
   return (
@@ -19,18 +16,22 @@ export default function FeaturedProducts() {
             محبوب‌ترین محصولات این هفته را بررسی کنید.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {featuredProductsData.map((product) => (
-            <ProductCard
-              key={product.id}
-              id={product.id}
-              name={product.name}
-              price={product.price}
-              imageUrl={product.imageUrl}
-              imageHint={product.imageHint}
-            />
-          ))}
-        </div>
+        {featuredProductsData.length > 0 ? (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {featuredProductsData.map((product) => (
+              <ProductCard
+                key={product.id}
+                id={product.id}
+                name={product.name}
+                price={product.price}
+                imageUrl={product.imageUrl}
+                imageHint={product.imageHint}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-muted-foreground">محصول ویژه‌ای برای نمایش وجود ندارد.</p>
+        )}
       </div>
     </section>
   );
