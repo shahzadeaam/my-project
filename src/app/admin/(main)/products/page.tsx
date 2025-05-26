@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { MoreHorizontal, PlusCircle, Search } from 'lucide-react';
-import type { Product } from '@/types/firestore'; // Using Firestore Product type
-import { db } from '@/lib/firebase';
+import { MoreHorizontal, PlusCircle, Search, PackageOpen } from 'lucide-react';
+import type { Product } from '@/types/firestore'; 
+import { db, Timestamp } from '@/lib/firebase'; // Import Timestamp
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from '@/components/ui/input';
 
+const DEFAULT_ADMIN_PRODUCT_IMAGE = "https://placehold.co/80x80.png";
 
 async function getProductsFromFirestore(): Promise<Product[]> {
   const productsCol = collection(db, 'products');
@@ -27,20 +28,28 @@ async function getProductsFromFirestore(): Promise<Product[]> {
     const data = doc.data();
     return {
       id: doc.id,
-      name: data.name,
-      price: data.price, // price is number
-      description: data.description,
-      imageUrl: data.imageUrl,
-      imageHint: data.imageHint,
-      createdAt: data.createdAt, // Firestore Timestamp
-      updatedAt: data.updatedAt, // Firestore Timestamp
+      name: data.name || "بدون نام",
+      price: data.price || 0,
+      description: data.description || "",
+      imageUrl: data.imageUrl && data.imageUrl.trim() !== "" ? data.imageUrl : DEFAULT_ADMIN_PRODUCT_IMAGE,
+      imageHint: data.imageHint || "product image",
+      createdAt: data.createdAt, 
+      updatedAt: data.updatedAt, 
     } as Product;
   });
   return productList;
 }
 
 export default async function AdminProductsPage() {
-  const productList = await getProductsFromFirestore();
+  let productList: Product[] = [];
+  let fetchError = null;
+
+  try {
+    productList = await getProductsFromFirestore();
+  } catch (error) {
+    console.error("Error fetching products for admin page:", error);
+    fetchError = "خطا در بارگذاری محصولات از پایگاه داده.";
+  }
 
   return (
     <div className="space-y-6">
@@ -51,8 +60,8 @@ export default async function AdminProductsPage() {
             افزودن، ویرایش و مدیریت محصولات فروشگاه. (عملیات CRUD هنوز پیاده‌سازی نشده)
           </p>
         </div>
-        <Button asChild disabled> {/* Disabled until CRUD is implemented */}
-          <Link href="#"> {/* Placeholder link /admin/products/add */}
+        <Button asChild disabled> 
+          <Link href="#"> 
             <PlusCircle className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" />
             افزودن محصول جدید (بزودی)
           </Link>
@@ -63,11 +72,16 @@ export default async function AdminProductsPage() {
         <CardHeader className="px-7">
           <CardTitle>لیست محصولات</CardTitle>
           <CardDescription>
-            در مجموع {productList.length} محصول در پایگاه داده موجود است.
+            {fetchError ? fetchError : `در مجموع ${productList.length} محصول در پایگاه داده موجود است.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {productList.length > 0 ? (
+          {fetchError ? (
+             <div className="text-center py-12 text-destructive">
+                <PackageOpen className="mx-auto h-12 w-12 mb-4" />
+                {fetchError}
+            </div>
+          ) : productList.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -87,7 +101,7 @@ export default async function AdminProductsPage() {
                     <TableCell className="hidden sm:table-cell p-2">
                       <div className="relative h-12 w-12 rounded-md overflow-hidden bg-muted">
                         <Image
-                          src={product.imageUrl}
+                          src={product.imageUrl} // Already has default
                           alt={product.name}
                           layout="fill"
                           objectFit="cover"
@@ -107,7 +121,7 @@ export default async function AdminProductsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                        {product.createdAt ? (product.createdAt as any).toDate().toLocaleDateString('fa-IR') : 'نامشخص'}
+                        {product.createdAt ? (product.createdAt as Timestamp).toDate().toLocaleDateString('fa-IR') : 'نامشخص'}
                     </TableCell>
                     <TableCell className="text-left">
                       <DropdownMenu dir="rtl">
@@ -138,6 +152,7 @@ export default async function AdminProductsPage() {
             </Table>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
+               <PackageOpen className="mx-auto h-12 w-12 mb-4" />
               هیچ محصولی در پایگاه داده یافت نشد. (می‌توانید محصولات را مستقیماً از طریق کنسول Firebase اضافه کنید.)
             </div>
           )}

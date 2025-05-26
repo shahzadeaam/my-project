@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { useCart } from '@/context/cart-context';
-import type { CartItem as CartItemType } from '@/context/cart-context'; // CartItemType uses Product from firestore (price is number)
+import type { CartItem as CartItemType } from '@/context/cart-context';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { AlertCircle, CreditCard, ShoppingBag, Info } from 'lucide-react';
@@ -33,19 +33,23 @@ const checkoutFormSchema = z.object({
 
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 
+const DEFAULT_ORDER_ITEM_IMAGE = "https://placehold.co/64x64.png";
+
 function OrderSummaryItem({ item }: { item: CartItemType }) {
-  // item.price is now a number
   const totalPriceForItem = item.price * item.quantity;
 
   const formatPrice = (price: number): string => {
     return `${price.toLocaleString('fa-IR')} تومان`;
   };
 
+  const displayImageUrl = item.imageUrl && item.imageUrl.trim() !== "" ? item.imageUrl : DEFAULT_ORDER_ITEM_IMAGE;
+  const displayImageHint = item.imageUrl && item.imageUrl.trim() !== "" ? item.imageHint : "product placeholder";
+
   return (
     <div className="flex items-center justify-between py-3">
       <div className="flex items-center gap-3">
         <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted">
-          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={item.imageHint} />
+          <Image src={displayImageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={displayImageHint} />
         </div>
         <div>
           <p className="font-medium text-sm text-foreground">{item.name}</p>
@@ -79,10 +83,10 @@ export default function CheckoutPage() {
   }, [currentUser, setValue]);
 
   useEffect(() => {
-    if (items.length === 0 && !isProcessing) {
+    if (items.length === 0 && !isProcessing && paymentStatus !== 'success') { // Prevent redirect if payment was successful
       router.replace('/cart');
     }
-  }, [items, router, isProcessing]);
+  }, [items, router, isProcessing, paymentStatus]);
 
   const cartTotal = items.reduce((total, item) => {
     return total + (item.price * item.quantity);
@@ -107,7 +111,6 @@ export default function CheckoutPage() {
     setPaymentStatus('idle');
     const mockOrderId = `ORD-${Date.now().toString().slice(-6)}`;
 
-    // Simulate payment gateway interaction
     await new Promise(resolve => setTimeout(resolve, 2000));
     const paymentSuccessful = true; 
 
@@ -116,9 +119,9 @@ export default function CheckoutPage() {
         const orderItems: OrderItem[] = items.map(item => ({
           productId: item.id,
           name: item.name,
-          price: item.price, // price is already a number
+          price: item.price,
           quantity: item.quantity,
-          imageUrl: item.imageUrl,
+          imageUrl: item.imageUrl && item.imageUrl.trim() !== "" ? item.imageUrl : DEFAULT_ORDER_ITEM_IMAGE, // Use default if empty
         }));
 
         const newOrder: Omit<OrderDocument, 'id'> = {
@@ -131,8 +134,7 @@ export default function CheckoutPage() {
             email: data.email,
             phoneNumber: data.phoneNumber,
           },
-          // shippingAddress: undefined, // TODO: Implement address selection if needed
-          paymentDetails: { // For simulated payment
+          paymentDetails: { 
             orderId: mockOrderId,
             gateway: "Simulated Gateway",
           },
@@ -167,7 +169,7 @@ export default function CheckoutPage() {
     setIsProcessing(false);
   };
   
-  if (items.length === 0 && !isProcessing) {
+  if (items.length === 0 && paymentStatus !== 'success' && !isProcessing) { // Check paymentStatus here too
      return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -227,7 +229,6 @@ export default function CheckoutPage() {
                     <Input id="phoneNumber" type="tel" {...register('phoneNumber')} dir="ltr" className="mt-1 h-11" />
                     {errors.phoneNumber && <p className="text-sm text-destructive mt-1">{errors.phoneNumber.message}</p>}
                   </div>
-                  {/* TODO: Add address selection here if multiple addresses are supported */}
                   <Button type="submit" size="lg" className="w-full mt-6 h-12 text-base" disabled={isProcessing || !currentUser}>
                     {isProcessing ? (
                       <>

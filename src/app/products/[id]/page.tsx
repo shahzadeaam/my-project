@@ -1,5 +1,5 @@
 
-import type { Product } from '@/types/firestore'; // Updated import
+import type { Product } from '@/types/firestore';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import Header from '@/components/layout/header';
@@ -15,6 +15,8 @@ interface ProductDetailsPageProps {
   params: { id: string };
 }
 
+const DEFAULT_PRODUCT_IMAGE = "https://placehold.co/600x750.png"; // Larger for details page
+
 async function getProduct(id: string): Promise<Product | null> {
   const productDocRef = doc(db, 'products', id);
   const productSnap = await getDoc(productDocRef);
@@ -22,7 +24,17 @@ async function getProduct(id: string): Promise<Product | null> {
   if (!productSnap.exists()) {
     return null;
   }
-  return { id: productSnap.id, ...productSnap.data() } as Product;
+  const data = productSnap.data();
+  return { 
+    id: productSnap.id,
+    name: data.name || "نام محصول نامشخص",
+    price: data.price || 0,
+    description: data.description || "توضیحات موجود نیست.",
+    imageUrl: data.imageUrl && data.imageUrl.trim() !== "" ? data.imageUrl : DEFAULT_PRODUCT_IMAGE,
+    imageHint: data.imageHint || "product image",
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+   } as Product;
 }
 
 export async function generateMetadata(
@@ -48,21 +60,18 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
     notFound();
   }
 
-  // Create a version of the product suitable for AddToCartButton and CartContext
-  // (since CartItem extends Product from '@/data/products' which is now removed)
   const cartProduct: Product = {
     id: product.id,
     name: product.name,
-    // Price for display is formatted, but AddToCartButton might expect a string like "۱,۸۵۰,۰۰۰ تومان"
-    // For cart logic, it's better to work with numbers. The Product type now has price as number.
-    // We'll pass the raw product (with price as number) to AddToCartButton
-    price: product.price, // Pass number directly
+    price: product.price,
     description: product.description,
-    imageUrl: product.imageUrl,
+    imageUrl: product.imageUrl, // Already handled with default in getProduct
     imageHint: product.imageHint,
   };
   
   const displayPrice = product.price.toLocaleString('fa-IR') + ' تومان';
+  const displayImageUrl = product.imageUrl; // Already has default from getProduct
+  const displayImageHint = product.imageHint || "product image";
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -73,11 +82,11 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
             <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
               <div className="aspect-[4/5] relative w-full overflow-hidden rounded-lg shadow-lg bg-muted">
                 <Image
-                  src={product.imageUrl}
+                  src={displayImageUrl}
                   alt={product.name}
                   layout="fill"
                   objectFit="cover"
-                  data-ai-hint={product.imageHint}
+                  data-ai-hint={displayImageHint}
                   className="rounded-lg transition-transform duration-300 hover:scale-105"
                   priority
                 />
@@ -102,10 +111,15 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
 }
 
 export async function generateStaticParams() {
-  const productsCol = collection(db, 'products');
-  const productsSnapshot = await getDocs(productsCol);
-  const paths = productsSnapshot.docs.map((doc) => ({
-    id: doc.id,
-  }));
-  return paths;
+  try {
+    const productsCol = collection(db, 'products');
+    const productsSnapshot = await getDocs(productsCol);
+    const paths = productsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+    }));
+    return paths;
+  } catch (error) {
+    console.error("Error generating static params for products:", error);
+    return [];
+  }
 }

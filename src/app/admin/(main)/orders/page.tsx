@@ -1,10 +1,11 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button'; // Added Button import
 import { PackageSearch, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, Timestamp as FirestoreTimestamp } from 'firebase/firestore'; // Renamed Timestamp
+import { collection, getDocs, query, orderBy, Timestamp as FirestoreTimestamp } from 'firebase/firestore';
 import type { OrderDocument } from '@/types/firestore';
 import Link from 'next/link';
 
@@ -15,15 +16,15 @@ async function getOrdersFromFirestore(): Promise<OrderDocument[]> {
     const data = doc.data();
     return {
       id: doc.id,
-      userId: data.userId,
-      items: data.items,
-      totalAmount: data.totalAmount,
-      status: data.status,
-      customerInfo: data.customerInfo,
+      userId: data.userId || "نامشخص",
+      items: data.items || [],
+      totalAmount: data.totalAmount || 0,
+      status: data.status || 'نامشخص',
+      customerInfo: data.customerInfo || { fullName: "نامشخص", email: "", phoneNumber: "" },
       shippingAddress: data.shippingAddress,
       paymentDetails: data.paymentDetails,
-      createdAt: data.createdAt, // Firestore Timestamp
-      updatedAt: data.updatedAt, // Firestore Timestamp
+      createdAt: data.createdAt, 
+      updatedAt: data.updatedAt, 
     } as OrderDocument;
   });
   return orderList;
@@ -31,10 +32,10 @@ async function getOrdersFromFirestore(): Promise<OrderDocument[]> {
 
 const getOrderStatusBadgeVariant = (status: OrderDocument['status']): "default" | "secondary" | "outline" | "destructive" => {
   switch (status) {
-    case 'تحویل داده شده': return "default"; // Usually green-ish
-    case 'ارسال شده': return "secondary"; // Usually blue-ish
-    case 'در حال پردازش': return "outline"; // Usually yellow-ish or neutral
-    case 'لغو شده': return "destructive"; // Usually red-ish
+    case 'تحویل داده شده': return "default"; 
+    case 'ارسال شده': return "secondary"; 
+    case 'در حال پردازش': return "outline"; 
+    case 'لغو شده': return "destructive"; 
     default: return "outline";
   }
 };
@@ -44,7 +45,20 @@ const formatOrderPrice = (price: number): string => {
 };
 
 export default async function AdminOrdersPage() {
-  const orders = await getOrdersFromFirestore();
+  let orders: OrderDocument[] = [];
+  let fetchError = null;
+
+  try {
+    orders = await getOrdersFromFirestore();
+  } catch (error: any) {
+    console.error("Error fetching orders for admin page:", error);
+    if (error.message && error.message.includes("indexes?create_composite")) {
+        fetchError = "ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً با استفاده از لینک ارائه شده در کنسول Firebase (هنگام بروز این خطا در صفحه پروفایل کاربر) ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.";
+    } else {
+        fetchError = "خطا در بارگذاری سفارش‌ها از پایگاه داده.";
+    }
+  }
+
 
   return (
     <div className="space-y-6">
@@ -54,7 +68,20 @@ export default async function AdminOrdersPage() {
                 مشاهده و پیگیری سفارش‌های ثبت شده در فروشگاه. (تغییر وضعیت هنوز پیاده‌سازی نشده)
             </p>
         </div>
-        {orders.length > 0 ? (
+        {fetchError ? (
+            <Card className="min-h-[400px] flex flex-col items-center justify-center text-center">
+                <CardHeader>
+                <PackageSearch className="mx-auto h-16 w-16 text-destructive mb-4" />
+                <CardTitle className="text-xl text-destructive">خطا در بارگذاری سفارش‌ها</CardTitle>
+                <CardDescription className="text-muted-foreground px-4">
+                    {fetchError}
+                </CardDescription>
+                </CardHeader>
+                 <CardContent>
+                    <Button onClick={() => window.location.reload()}>تلاش مجدد</Button>
+                </CardContent>
+            </Card>
+        ) : orders.length > 0 ? (
             <Card>
                 <CardHeader>
                     <CardTitle>لیست سفارش‌ها</CardTitle>
@@ -99,7 +126,6 @@ export default async function AdminOrdersPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-left">
-                                        {/* Placeholder for actions like view details, change status */}
                                         <Button variant="ghost" size="sm" disabled>مشاهده</Button>
                                     </TableCell>
                                 </TableRow>

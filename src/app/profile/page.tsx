@@ -33,6 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import type { UserProfileDocument, Address, OrderDocument, OrderItem } from '@/types/firestore';
 
+const DEFAULT_ORDER_ITEM_IMAGE_PROFILE = "https://placehold.co/64x64.png";
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -60,7 +61,7 @@ export default function ProfilePage() {
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
-  const [currentAddressForm, setCurrentAddressForm] = useState<Omit<Address, 'id' | 'isDefault' | 'createdAt'>>({
+  const [currentAddressForm, setCurrentAddressForm] = useState<Omit<Address, 'id' | 'isDefault' | 'createdAt' | 'updatedAt'>>({
     recipientName: '',
     street: '',
     city: '',
@@ -68,18 +69,18 @@ export default function ProfilePage() {
     phoneNumber: '',
   });
 
-  const [privacySettings, setPrivacySettings] = useState({
+  const [privacySettings, setPrivacySettings] = useState<UserProfileDocument['privacySettings']>({
     showPublicProfile: false,
     receiveNewsletter: true,
-    shareActivity: false,
+    shareActivity: false, // Added this as a new default
   });
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
 
 
-  // Fetch User Profile Data from Firestore
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (currentUser) {
+        setIsLoadingAddresses(true); // Start loading addresses
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
@@ -88,30 +89,42 @@ export default function ProfilePage() {
           setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
           setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
         } else {
-          // Create a profile if it doesn't exist (e.g., for users created before this logic)
-          const newProfile: UserProfileDocument = {
+          const newProfileData: UserProfileDocument = {
             uid: currentUser.uid,
             email: currentUser.email || '',
-            fullName: currentUser.displayName || 'کاربر',
+            fullName: currentUser.displayName || 'کاربر جدید',
             phoneNumber: '',
             privacySettings: { showPublicProfile: false, receiveNewsletter: true, shareActivity: false },
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now()
           };
-          await setDoc(userDocRef, newProfile);
-          setProfile(newProfile);
-          setTempProfileData({ fullName: newProfile.fullName, phoneNumber: newProfile.phoneNumber || '' });
+          try {
+            await setDoc(userDocRef, newProfileData);
+            setProfile(newProfileData);
+            setTempProfileData({ fullName: newProfileData.fullName, phoneNumber: newProfileData.phoneNumber || '' });
+            setPrivacySettings(newProfileData.privacySettings);
+          } catch (error) {
+            console.error("Error creating user profile in Firestore:", error);
+            toast({ title: "خطا", description: "مشکلی در ایجاد پروفایل شما پیش آمد.", variant: "destructive" });
+          }
         }
+        // Fetch addresses after profile is loaded or created
+        const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
+        const qAddr = query(addressesCol, orderBy('createdAt', 'desc'));
+        const addressSnapshot = await getDocs(qAddr);
+        const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
+        setAddresses(fetchedAddresses);
+        setIsLoadingAddresses(false); // End loading addresses
       } else {
-        setProfile(null); // Clear profile if no user
+        setProfile(null);
+        setAddresses([]);
       }
     };
     if (!authLoading) {
       fetchUserProfile();
     }
-  }, [currentUser, authLoading]);
+  }, [currentUser, authLoading, toast]);
 
-  // Fetch User Orders
   useEffect(() => {
     const fetchOrders = async () => {
       if (!currentUser) {
@@ -130,7 +143,11 @@ export default function ProfilePage() {
         setUserOrders(fetchedOrders);
       } catch (error) {
         console.error("Error fetching orders: ", error);
-        toast({ title: "خطا", description: "مشکلی در بارگذاری سفارش‌ها پیش آمد.", variant: "destructive" });
+        if (error instanceof Error && error.message.includes("indexes?create_composite")) {
+             toast({ title: "خطای پایگاه داده", description: "ایندکس مورد نیاز برای نمایش سفارش‌ها وجود ندارد. لطفاً با راهنمایی کنسول Firebase ایندکس را ایجاد کنید.", variant: "destructive", duration: 10000 });
+        } else {
+            toast({ title: "خطا", description: "مشکلی در بارگذاری سفارش‌ها پیش آمد.", variant: "destructive" });
+        }
       } finally {
         setIsLoadingOrders(false);
       }
@@ -138,30 +155,6 @@ export default function ProfilePage() {
     if (currentUser) {
       fetchOrders();
     }
-  }, [currentUser, toast]);
-
-  // Fetch Addresses (already implemented from previous step)
-  useEffect(() => {
-    const fetchAddresses = async () => {
-        if (!currentUser) {
-            setAddresses([]);
-            return;
-        }
-        setIsLoadingAddresses(true);
-        try {
-            const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
-            const q = query(addressesCol, orderBy('createdAt', 'desc'));
-            const addressSnapshot = await getDocs(q);
-            const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
-            setAddresses(fetchedAddresses);
-        } catch (error) {
-            console.error("Error fetching addresses: ", error);
-            toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
-        } finally {
-            setIsLoadingAddresses(false);
-        }
-    };
-    if(currentUser) fetchAddresses();
   }, [currentUser, toast]);
 
 
@@ -202,24 +195,20 @@ export default function ProfilePage() {
       setProfile(prev => prev ? ({ ...prev, ...updates, fullName: updates.fullName ?? prev.fullName, phoneNumber: updates.phoneNumber ?? prev.phoneNumber }) : null);
       setIsEditingInfo(false);
       toast({ title: "اطلاعات ذخیره شد", description: "اطلاعات پروفایل شما با موفقیت به‌روزرسانی شد." });
-       if(authProfileUpdated) {
-        // Manually update context or rely on onAuthStateChanged if it picks up displayName change quickly
-        // Forcing a reload of user from auth might be an option or simply updating local state.
-      }
     } catch (error) {
       console.error("Error updating profile in Firestore:", error);
       toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل در پایگاه داده رخ داد.", variant: "destructive" });
     }
   };
   
-  const handlePrivacySettingChange = async (key: keyof UserProfileDocument['privacySettings'], value: boolean) => {
+  const handlePrivacySettingChange = async (key: keyof NonNullable<UserProfileDocument['privacySettings']>, value: boolean) => {
     if (!currentUser || !profile) return;
 
     const newPrivacySettings = {
       ...privacySettings,
       [key]: value,
     };
-    setPrivacySettings(newPrivacySettings); // Optimistic update
+    setPrivacySettings(newPrivacySettings); 
 
     setIsSavingPrivacy(true);
     try {
@@ -233,7 +222,6 @@ export default function ProfilePage() {
     } catch (error) {
       console.error("Error saving privacy settings:", error);
       toast({ title: "خطا", description: "مشکلی در ذخیره تنظیمات حریم خصوصی پیش آمد.", variant: "destructive" });
-      // Revert optimistic update if needed
       setPrivacySettings(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
     } finally {
       setIsSavingPrivacy(false);
@@ -321,7 +309,7 @@ export default function ProfilePage() {
       return;
     }
 
-    const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
+    const addressesColRef = collection(db, 'users', currentUser.uid, 'addresses');
     
     try {
       if (editingAddress) {
@@ -330,8 +318,13 @@ export default function ProfilePage() {
         toast({ title: "آدرس به‌روزرسانی شد", description: "تغییرات آدرس شما با موفقیت ذخیره شد." });
       } else {
         const isMakingDefault = addresses.length === 0 || !addresses.some(addr => addr.isDefault);
-        const newAddressData = { ...currentAddressForm, createdAt: Timestamp.now(), isDefault: isMakingDefault };
-        const docRef = await addDoc(addressesCol, newAddressData);
+        const newAddressData: Omit<Address, 'id'> = { 
+            ...currentAddressForm, 
+            createdAt: Timestamp.now(), 
+            updatedAt: Timestamp.now(),
+            isDefault: isMakingDefault 
+        };
+        const docRef = await addDoc(addressesColRef, newAddressData);
         
         if (isMakingDefault && addresses.length > 0) {
             const batch = writeBatch(db);
@@ -343,14 +336,14 @@ export default function ProfilePage() {
         }
         toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما با موفقیت اضافه شد." });
       }
-      // Manually call fetchAddresses after Firestore operation
-      if (currentUser) { // Re-check currentUser as it might be null if logout happened during async
-        setIsLoadingAddresses(true);
-        const addressesSnapshot = await getDocs(query(collection(db, 'users', currentUser.uid, 'addresses'), orderBy('createdAt', 'desc')));
-        const fetchedAddresses = addressesSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
-        setAddresses(fetchedAddresses);
-        setIsLoadingAddresses(false);
-      }
+      
+      setIsLoadingAddresses(true);
+      const q = query(addressesColRef, orderBy('createdAt', 'desc'));
+      const addressSnapshot = await getDocs(q);
+      const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
+      setAddresses(fetchedAddresses);
+      setIsLoadingAddresses(false);
+      
       setIsAddressDialogOpen(false);
     } catch (error) {
       console.error("Error saving address: ", error);
@@ -412,7 +405,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (authLoading || (!currentUser && !authLoading && profile === null) ) {
+  if (authLoading || (!currentUser && !authLoading && profile === undefined) ) { // Changed profile === null to profile === undefined for initial loading state
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -464,7 +457,6 @@ export default function ProfilePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-3 space-y-8">
-            {/* Personal Information Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-3"> <User className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">اطلاعات شخصی</CardTitle> </div>
@@ -489,7 +481,6 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Address Management Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                  <div className="flex items-center gap-3"> <MapPin className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">مدیریت آدرس‌ها</CardTitle> </div>
@@ -501,12 +492,12 @@ export default function ProfilePage() {
                 ) : addresses.length > 0 ? (
                     <div className="space-y-4">
                         {addresses.map(addr => (
-                            <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-2 border-primary shadow-md' : 'shadow-sm'}`}>
+                            <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-2 border-primary shadow-md bg-primary/5' : 'shadow-sm'}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex-grow">
                                       <div className="flex items-center mb-1">
                                         <span className="font-semibold text-foreground">{addr.recipientName}</span>
-                                        {addr.isDefault && <Badge variant="secondary" className="mr-2 rtl:ml-2 text-xs bg-primary/20 text-primary border-primary/30">پیش‌فرض</Badge>}
+                                        {addr.isDefault && <Badge variant="secondary" className="mr-2 rtl:ml-2 rtl:mr-0 text-xs bg-primary/20 text-primary border-primary/30">پیش‌فرض</Badge>}
                                       </div>
                                         <p className="text-sm text-muted-foreground">{addr.street}, {addr.city}</p>
                                         <p className="text-sm text-muted-foreground">کدپستی: {addr.postalCode} - تلفن: <span dir="ltr">{addr.phoneNumber}</span></p>
@@ -524,7 +515,6 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Order History Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3"> <ShoppingBag className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle> </CardHeader>
               <CardContent>
@@ -548,7 +538,6 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Account Settings Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3"> <Settings className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حساب</CardTitle> </CardHeader>
               <CardContent className="space-y-3 pt-3">
@@ -569,9 +558,10 @@ export default function ProfilePage() {
             <Card className="shadow-lg">
                 <CardHeader className="flex items-center gap-3"> <ShieldCheck className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle> </CardHeader>
                 <CardContent className="space-y-5 pt-3">
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label> <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p> </div> <Switch id="showPublicProfile" checked={privacySettings.showPublicProfile} onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)} aria-label="نمایش پروفایل عمومی" disabled={isSavingPrivacy} /> </div> <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label> <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p> </div> <Switch id="receiveNewsletter" checked={privacySettings.receiveNewsletter} onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)} aria-label="دریافت خبرنامه" disabled={isSavingPrivacy} /> </div>
-                    {/* Add other privacy settings similarly */}
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label> <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p> </div> <Switch id="showPublicProfile" checked={privacySettings?.showPublicProfile || false} onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)} aria-label="نمایش پروفایل عمومی" disabled={isSavingPrivacy} /> </div> <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label> <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p> </div> <Switch id="receiveNewsletter" checked={privacySettings?.receiveNewsletter || false} onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)} aria-label="دریافت خبرنامه" disabled={isSavingPrivacy} /> </div>
+                     <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت خرید با شرکای تجاری (نمایشی)</Label> <p className="text-xs text-muted-foreground mt-0.5">برای دریافت پیشنهادات شخصی‌سازی شده‌تر.</p> </div> <Switch id="shareActivity" checked={privacySettings?.shareActivity || false} onCheckedChange={(checked) => handlePrivacySettingChange('shareActivity', checked)} aria-label="اشتراک گذاری فعالیت" disabled={isSavingPrivacy} /> </div>
                 </CardContent>
                 <CardFooter> <p className="text-xs text-muted-foreground">تغییرات تنظیمات حریم خصوصی در پایگاه داده ذخیره می‌شود.</p> </CardFooter>
             </Card>
@@ -581,7 +571,7 @@ export default function ProfilePage() {
 
       <Dialog open={!!selectedOrder} onOpenChange={(isOpen) => !isOpen && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80svh] flex flex-col">
-          {selectedOrder && ( <> <DialogHeader> <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle> <DialogDescription> تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)} className={ selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }>{selectedOrder.status}</Badge> </DialogDescription> </DialogHeader> <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3"> <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4> {selectedOrder.items.map((item: OrderItem) => ( <div key={item.productId} className="flex items-center gap-3 border-b pb-2"> {item.imageUrl && ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0"> <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} /> </div> )} <div className="flex-grow"> <p className="font-medium text-sm">{item.name}</p> <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p> <p className="text-xs text-muted-foreground">قیمت واحد: {formatOrderPrice(item.price)}</p> </div> <p className="text-sm font-semibold">{ formatOrderPrice(item.price * item.quantity) }</p> </div> ))} {selectedOrder.shippingAddress && ( <div className="pt-3"> <h4 className="font-semibold mb-1">آدرس ارسال:</h4> <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p> </div> )} <Separator className="my-3" /> <div className="flex justify-between items-center font-bold text-md"> <span>مبلغ کل سفارش:</span> <span>{formatOrderPrice(selectedOrder.totalAmount)}</span> </div> </div> <DialogFooter className="mt-auto pt-4 border-t"> <DialogClose asChild> <Button type="button" variant="outline">بستن</Button> </DialogClose> </DialogFooter> </> )} </DialogContent>
+          {selectedOrder && ( <> <DialogHeader> <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle> <DialogDescription> تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)} className={ selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }>{selectedOrder.status}</Badge> </DialogDescription> </DialogHeader> <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3"> <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4> {selectedOrder.items.map((item: OrderItem, index: number) => ( <div key={item.productId + '-' + index} className="flex items-center gap-3 border-b pb-2"> {(item.imageUrl && item.imageUrl.trim() !== "") ? ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0"> <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} /> </div> ) : ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-muted-foreground"/></div> )} <div className="flex-grow"> <p className="font-medium text-sm">{item.name}</p> <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p> <p className="text-xs text-muted-foreground">قیمت واحد: {formatOrderPrice(item.price)}</p> </div> <p className="text-sm font-semibold">{ formatOrderPrice(item.price * item.quantity) }</p> </div> ))} {selectedOrder.shippingAddress && ( <div className="pt-3"> <h4 className="font-semibold mb-1">آدرس ارسال:</h4> <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p> </div> )} <Separator className="my-3" /> <div className="flex justify-between items-center font-bold text-md"> <span>مبلغ کل سفارش:</span> <span>{formatOrderPrice(selectedOrder.totalAmount)}</span> </div> </div> <DialogFooter className="mt-auto pt-4 border-t"> <DialogClose asChild> <Button type="button" variant="outline">بستن</Button> </DialogClose> </DialogFooter> </> )} </DialogContent>
       </Dialog>
 
        <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>

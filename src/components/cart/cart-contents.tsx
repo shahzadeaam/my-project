@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useCart, type CartItem as CartItemType } from '@/context/cart-context'; // CartItemType now has price as number
+import { useCart, type CartItem as CartItemType } from '@/context/cart-context';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+const DEFAULT_CART_ITEM_IMAGE = "https://placehold.co/100x125.png";
 
 function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType, onUpdateQuantity: (id: string, quantity: number) => void, onRemoveItem: (id: string) => void }) {
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,25 +31,26 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
     onUpdateQuantity(item.id, Math.max(0, item.quantity - 1));
   };
   
-  // item.price is now a number
   const totalPriceForItem = item.price * item.quantity;
   
   const formatPrice = (price: number): string => {
     return `${price.toLocaleString('fa-IR')} تومان`;
   };
 
+  const displayImageUrl = item.imageUrl && item.imageUrl.trim() !== "" ? item.imageUrl : DEFAULT_CART_ITEM_IMAGE;
+  const displayImageHint = item.imageUrl && item.imageUrl.trim() !== "" ? item.imageHint : "placeholder image";
 
   return (
     <Card className="mb-4 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
       <CardContent className="p-3 sm:p-4 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
         <div className="w-24 h-[120px] sm:w-28 sm:h-[140px] relative rounded-md overflow-hidden flex-shrink-0 bg-muted">
-          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={item.imageHint} className="rounded-md" />
+          <Image src={displayImageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={displayImageHint} className="rounded-md" />
         </div>
         <div className="flex-grow text-center sm:text-right">
           <Link href={`/products/${item.id}`} className="text-md sm:text-lg font-semibold hover:text-primary transition-colors line-clamp-2">
             {item.name}
           </Link>
-          <p className="text-sm text-muted-foreground mt-1">{formatPrice(item.price)}</p> {/* Format price for display */}
+          <p className="text-sm text-muted-foreground mt-1">{formatPrice(item.price)}</p>
         </div>
         <div className="flex items-center gap-2 mt-2 sm:mt-0">
           <Button variant="outline" size="icon" onClick={decrementQuantity} aria-label="کاهش تعداد" className="h-9 w-9 sm:h-10 sm:w-10">
@@ -82,7 +84,6 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }: { item: CartItemType
 export default function CartContents() {
   const { items, updateItemQuantity, removeItem, clearCart } = useCart();
 
-  // items in cart now have price as number
   const cartTotal = items.reduce((total, item) => {
     return total + (item.price * item.quantity);
   }, 0);
