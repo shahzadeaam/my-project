@@ -1,6 +1,9 @@
+
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,14 +11,70 @@ import { Label } from '@/components/ui/label';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
+import { useToast } from '@/hooks/use-toast';
+import { auth } from '@/lib/firebase'; // Import Firebase auth instance
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 export default function SignupPage() {
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // Placeholder for signup logic
-    console.log('Signup form submitted');
-    // Here you would typically call an API to create a new user
+    setError(null);
+    setIsLoading(true);
+
+    if (password !== confirmPassword) {
+      setError('رمز عبور و تکرار آن با هم تطابق ندارند.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('رمز عبور باید حداقل ۶ کاراکتر باشد.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      toast({
+        title: 'ثبت نام موفق!',
+        description: 'حساب کاربری شما با موفقیت ایجاد شد. اکنون به پروفایل خود هدایت می‌شوید.',
+        variant: 'default',
+      });
+      //fullName را می‌توانید بعداً در پروفایل کاربر در Firestore ذخیره کنید.
+      console.log('Full name (for potential later use):', fullName);
+      router.push('/profile'); // یا به صفحه اصلی '/ '
+    } catch (err: any) {
+      let friendlyMessage = 'خطایی در هنگام ثبت نام رخ داد. لطفا دوباره تلاش کنید.';
+      if (err.code === 'auth/email-already-in-use') {
+        friendlyMessage = 'این آدرس ایمیل قبلاً استفاده شده است.';
+      } else if (err.code === 'auth/weak-password') {
+        friendlyMessage = 'رمز عبور شما ضعیف است. لطفا رمز عبور قوی‌تری انتخاب کنید.';
+      } else if (err.code === 'auth/invalid-email') {
+        friendlyMessage = 'آدرس ایمیل وارد شده معتبر نیست.';
+      }
+      setError(friendlyMessage);
+      toast({
+        title: 'خطا در ثبت نام',
+        description: friendlyMessage,
+        variant: 'destructive',
+      });
+      console.error('Firebase Signup Error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
@@ -29,24 +88,79 @@ export default function SignupPage() {
             <CardDescription className="text-muted-foreground">برای شروع خرید و لذت بردن از امکانات سایت ثبت نام کنید.</CardDescription>
           </CardHeader>
           <CardContent className="px-6 py-8 sm:px-8">
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>خطا!</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="fullName">نام و نام خانوادگی</Label>
-                <Input id="fullName" type="text" placeholder="مثلا: نیلوفر محمدی" required className="h-12 text-base" />
+                <Input 
+                  id="fullName" 
+                  type="text" 
+                  placeholder="مثلا: نیلوفر محمدی" 
+                  required 
+                  className="h-12 text-base"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">آدرس ایمیل</Label>
-                <Input id="email" type="email" placeholder="example@email.com" required dir="ltr" className="h-12 text-base" />
+                <Input 
+                  id="email" 
+                  type="email" 
+                  placeholder="example@email.com" 
+                  required 
+                  dir="ltr" 
+                  className="h-12 text-base"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">رمز عبور</Label>
-                <Input id="password" type="password" placeholder="حداقل ۸ کاراکتر" required dir="ltr" className="h-12 text-base" />
+                <Input 
+                  id="password" 
+                  type="password" 
+                  placeholder="حداقل ۶ کاراکتر" 
+                  required 
+                  dir="ltr" 
+                  className="h-12 text-base"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
                <div className="space-y-2">
                 <Label htmlFor="confirmPassword">تکرار رمز عبور</Label>
-                <Input id="confirmPassword" type="password" placeholder="رمز عبور خود را تکرار کنید" required dir="ltr" className="h-12 text-base" />
+                <Input 
+                  id="confirmPassword" 
+                  type="password" 
+                  placeholder="رمز عبور خود را تکرار کنید" 
+                  required 
+                  dir="ltr" 
+                  className="h-12 text-base"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
-              <Button type="submit" className="w-full h-12 text-base font-semibold mt-3">ثبت نام</Button>
+              <Button type="submit" className="w-full h-12 text-base font-semibold mt-3" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="ml-2 h-5 w-5 animate-spin rtl:mr-2 rtl:ml-0" />
+                    در حال ثبت نام...
+                  </>
+                ) : (
+                  'ثبت نام'
+                )}
+              </Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col items-center text-sm pb-8">
