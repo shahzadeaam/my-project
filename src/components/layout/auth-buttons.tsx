@@ -3,8 +3,11 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, UserCircle, LogOut } from 'lucide-react';
+import { LogIn, UserPlus, UserCircle, LogOut, Loader2 } from 'lucide-react';
 import { SheetClose } from '@/components/ui/sheet';
+import { useAuth } from '@/context/auth-context';
+import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 interface AuthButtonsProps {
   inSheet?: boolean;
@@ -12,72 +15,111 @@ interface AuthButtonsProps {
 }
 
 export default function AuthButtons({ inSheet = false, isMobile = false }: AuthButtonsProps) {
-  // Placeholder for authentication state - Default to false
-  const isAuthenticated = false; // Users are logged out by default
+  const { currentUser, loading: authLoading, logout } = useAuth();
+  const { toast } = useToast();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  if (isAuthenticated) {
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout(); // This will also redirect via AuthContext
+      toast({
+        title: 'خروج موفق',
+        description: 'شما با موفقیت از حساب کاربری خود خارج شدید.',
+        variant: 'default',
+      });
+    } catch (error) {
+      toast({
+        title: 'خطا در خروج',
+        description: 'مشکلی در هنگام خروج از حساب پیش آمد.',
+        variant: 'destructive',
+      });
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  if (authLoading) {
+    // Show a simple placeholder or spinner while auth state is loading
+    return (
+      <div className={`flex items-center gap-1 md:gap-2 ${inSheet ? "flex-col space-y-1" : ""}`}>
+        <Button variant={inSheet ? "ghost" : "outline"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : ""}>
+          <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" />
+          {inSheet ? "بارگذاری..." : ""}
+        </Button>
+        {!inSheet &&
+          <Button variant={inSheet ? "ghost" : "default"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : ""}>
+            <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" />
+          </Button>
+        }
+      </div>
+    );
+  }
+
+  if (currentUser) { // User is authenticated
+    // Profile Button
+    const ProfileLinkContent = (
+      <>
+        <UserCircle className="ml-2 rtl:mr-2 rtl:ml-0" />
+        {'پروفایل من'}
+      </>
+    );
+    const profileButton = (
+      <Button 
+        variant={inSheet || isMobile ? "ghost" : "outline"} 
+        size={isMobile && !inSheet ? "icon" : "default"}
+        asChild 
+        className={inSheet ? "w-full justify-start text-base py-2.5" : ""}
+        aria-label="پروفایل من"
+      >
+        <Link href="/profile">
+          {isMobile && !inSheet ? <UserCircle className="h-6 w-6" /> : ProfileLinkContent}
+        </Link>
+      </Button>
+    );
+
+    // Logout Button
+    const LogoutLinkContent = (
+      <>
+        {isLoggingOut ? <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" /> : <LogOut className="ml-2 rtl:mr-2 rtl:ml-0" />}
+        {isLoggingOut ? 'در حال خروج...' : 'خروج'}
+      </>
+    );
+    const logoutButtonAction = (
+      <Button 
+        variant={inSheet || isMobile ? "ghost" : "outline"}
+        size={isMobile && !inSheet ? "icon" : "default"}
+        onClick={handleLogout} 
+        disabled={isLoggingOut}
+        className={
+          `${inSheet ? "w-full justify-start text-base py-2.5" : ""} ${
+            isMobile && !inSheet ? "" : 
+            (inSheet ? "text-destructive hover:text-destructive focus:text-destructive" : "text-destructive hover:text-destructive border-destructive hover:bg-destructive/10 focus:text-destructive")
+          }`
+        }
+        aria-label="خروج"
+      >
+        {isMobile && !inSheet ? (isLoggingOut ? <Loader2 className="h-6 w-6 animate-spin" /> : <LogOut className="h-6 w-6 text-destructive" />) : LogoutLinkContent}
+      </Button>
+    );
+    
+    const logoutButton = inSheet ? <SheetClose asChild>{logoutButtonAction}</SheetClose> : logoutButtonAction;
+
+
     if (isMobile && !inSheet) { // Mobile header: Two icon buttons
       return (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" asChild aria-label="پروفایل من">
-            <Link href="/profile">
-              <UserCircle className="h-6 w-6" />
-            </Link>
-          </Button>
-          <Button variant="ghost" size="icon" asChild aria-label="خروج" className="text-destructive hover:text-destructive focus:text-destructive">
-            <Link href="/auth/login"> {/* Redirect to login on logout */}
-              <LogOut className="h-6 w-6" />
-            </Link>
-          </Button>
+          {profileButton}
+          {logoutButton}
         </div>
       );
     } else { // Desktop header OR inSheet (mobile menu)
-      // Profile Button
-      const ProfileLinkContent = (
-        <>
-          <UserCircle className="ml-2 rtl:mr-2 rtl:ml-0" />
-          {'پروفایل من'}
-        </>
-      );
-      const profileButton = (
-        <Button 
-          variant={inSheet ? "ghost" : "outline"} 
-          asChild 
-          className={inSheet ? "w-full justify-start text-base py-2.5" : ""}
-        >
-          <Link href="/profile">
-            {ProfileLinkContent}
-          </Link>
-        </Button>
-      );
-
-      // Logout Button
-      const LogoutLinkContent = (
-        <>
-          <LogOut className="ml-2 rtl:mr-2 rtl:ml-0" />
-          {'خروج'}
-        </>
-      );
-      const logoutButton = (
-        <Button 
-          variant={inSheet ? "ghost" : "outline"} 
-          asChild 
-          className={
-            inSheet ? "w-full justify-start text-base py-2.5 text-destructive hover:text-destructive focus:text-destructive" : 
-            "text-destructive hover:text-destructive border-destructive hover:bg-destructive/10 focus:text-destructive"
-          }
-        >
-          <Link href="/auth/login"> {/* Redirect to login on logout */}
-            {LogoutLinkContent}
-          </Link>
-        </Button>
-      );
-
-      if (inSheet) {
+       if (inSheet) {
         return (
           <>
             <SheetClose asChild>{profileButton}</SheetClose>
-            <SheetClose asChild>{logoutButton}</SheetClose>
+            {logoutButton}
           </>
         );
       } else { // Desktop header
@@ -91,7 +133,7 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
     }
   }
 
-  // Logic for non-authenticated users
+  // Logic for non-authenticated users (currentUser is null)
   if (isMobile && !inSheet) { // Only icon for mobile header (not in sheet)
     return (
          <Button asChild variant="ghost" size="icon" aria-label="ورود یا ثبت نام">
@@ -104,13 +146,13 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
 
   const LoginLinkContent = (
     <>
-        <LogIn className={inSheet ? "ml-2 rtl:mr-2 rtl:ml-0" : "ml-2 rtl:mr-2 rtl:ml-0"} />
+        <LogIn className="ml-2 rtl:mr-2 rtl:ml-0" />
         ورود
     </>
   );
   const SignupLinkContent = (
      <>
-        <UserPlus className={inSheet ? "ml-2 rtl:mr-2 rtl:ml-0" : "ml-2 rtl:mr-2 rtl:ml-0"} />
+        <UserPlus className="ml-2 rtl:mr-2 rtl:ml-0" />
         ثبت نام
     </>
   );
@@ -130,7 +172,6 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
         </Link>
       </Button>
   );
-
 
   return (
     <div className={inSheet ? "flex flex-col space-y-1" : "flex items-center space-x-1 rtl:space-x-reverse md:space-x-2"}>

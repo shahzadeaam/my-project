@@ -43,3 +43,6 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# .اتصال فایربیس کنسول با فایربیس استودیو
+.env.local

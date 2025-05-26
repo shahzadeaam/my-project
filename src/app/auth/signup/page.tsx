@@ -12,10 +12,10 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase'; // Import Firebase auth instance
+import { auth } from '@/lib/firebase'; 
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
 
 export default function SignupPage() {
   const router = useRouter();
@@ -26,6 +26,9 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -51,9 +54,9 @@ export default function SignupPage() {
         description: 'حساب کاربری شما با موفقیت ایجاد شد. اکنون به پروفایل خود هدایت می‌شوید.',
         variant: 'default',
       });
-      //fullName را می‌توانید بعداً در پروفایل کاربر در Firestore ذخیره کنید.
+      // fullName را می‌توانید بعداً در پروفایل کاربر در Firestore ذخیره کنید.
       console.log('Full name (for potential later use):', fullName);
-      router.push('/profile'); // یا به صفحه اصلی '/ '
+      router.push('/profile'); 
     } catch (err: any) {
       let friendlyMessage = 'خطایی در هنگام ثبت نام رخ داد. لطفا دوباره تلاش کنید.';
       if (err.code === 'auth/email-already-in-use') {
@@ -123,33 +126,55 @@ export default function SignupPage() {
                   disabled={isLoading}
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <Label htmlFor="password">رمز عبور</Label>
                 <Input 
                   id="password" 
-                  type="password" 
+                  type={showPassword ? "text" : "password"}
                   placeholder="حداقل ۶ کاراکتر" 
                   required 
                   dir="ltr" 
-                  className="h-12 text-base"
+                  className="h-12 text-base pr-10" // Added pr-10 for icon spacing
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
                 />
+                <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" // Adjusted top position
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "مخفی کردن رمز عبور" : "نمایش رمز عبور"}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </Button>
               </div>
-               <div className="space-y-2">
+               <div className="space-y-2 relative">
                 <Label htmlFor="confirmPassword">تکرار رمز عبور</Label>
                 <Input 
                   id="confirmPassword" 
-                  type="password" 
+                  type={showConfirmPassword ? "text" : "password"}
                   placeholder="رمز عبور خود را تکرار کنید" 
                   required 
                   dir="ltr" 
-                  className="h-12 text-base"
+                  className="h-12 text-base pr-10" // Added pr-10 for icon spacing
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   disabled={isLoading}
                 />
+                <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" // Adjusted top position
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? "مخفی کردن تکرار رمز عبور" : "نمایش تکرار رمز عبور"}
+                    disabled={isLoading}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </Button>
               </div>
               <Button type="submit" className="w-full h-12 text-base font-semibold mt-3" disabled={isLoading}>
                 {isLoading ? (
