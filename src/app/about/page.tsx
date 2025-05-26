@@ -38,7 +38,7 @@ export default function AboutPage() {
                   alt="تیم نیلوفر بوتیک مشغول کار"
                   layout="fill"
                   objectFit="cover"
-                  data-ai-hint="team fashion store"
+                  data-ai-hint="fashion team"
                   className="rounded-lg"
                 />
               </div>
@@ -75,7 +75,7 @@ export default function AboutPage() {
                     alt="فضای داخلی فروشگاه نیلوفر بوتیک"
                     layout="fill"
                     objectFit="cover"
-                    data-ai-hint="boutique interior fashion"
+                    data-ai-hint="boutique interior"
                     className="rounded-lg"
                     />
               </div>

@@ -6,13 +6,13 @@ export default function ProductBanner() {
   return (
     <section className="relative w-full h-[calc(100vh-10rem)] min-h-[300px] md:h-[500px] flex items-center justify-center overflow-hidden">
       <Image
-        src="https://placehold.co/1200x500.png"
+        src="https://placehold.co/1600x600.png"
         alt="Promotional banner showcasing Niloofar Boutique products"
         layout="fill"
         objectFit="cover"
         className="brightness-75"
         priority
-        data-ai-hint="fashion products"
+        data-ai-hint="fashion boutique"
       />
       <div className="relative z-10 flex flex-col items-center text-center p-4">
         <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl drop-shadow-lg">
