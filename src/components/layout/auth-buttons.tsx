@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, UserCircle, LogOut } from 'lucide-react'; // LogOut وارد شد
+import { LogIn, UserPlus, UserCircle, LogOut } from 'lucide-react';
 import { SheetClose } from '@/components/ui/sheet';
 
 interface AuthButtonsProps {
@@ -12,8 +12,8 @@ interface AuthButtonsProps {
 }
 
 export default function AuthButtons({ inSheet = false, isMobile = false }: AuthButtonsProps) {
-  // Placeholder for authentication state - SET TO TRUE FOR PROFILE PAGE DEMO
-  const isAuthenticated = true; // Replace with actual auth check in a real app
+  // Placeholder for authentication state - Default to false
+  const isAuthenticated = false; // Users are logged out by default
 
   if (isAuthenticated) {
     if (isMobile && !inSheet) { // Mobile header: Two icon buttons
