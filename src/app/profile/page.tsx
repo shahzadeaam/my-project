@@ -34,6 +34,7 @@ import { Switch } from '@/components/ui/switch';
 import type { UserProfileDocument, Address, OrderDocument, OrderItem } from '@/types/firestore';
 
 const DEFAULT_ORDER_ITEM_IMAGE_PROFILE = "https://placehold.co/64x64.png";
+const DEFAULT_ADDRESS_IMAGE_HINT = "address location"; // Added for address section if needed
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -46,6 +47,8 @@ export default function ProfilePage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDocument | null>(null);
   const [userOrders, setUserOrders] = useState<OrderDocument[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [ordersFetchError, setOrdersFetchError] = useState<string | null>(null);
+
 
   const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -72,7 +75,7 @@ export default function ProfilePage() {
   const [privacySettings, setPrivacySettings] = useState<UserProfileDocument['privacySettings']>({
     showPublicProfile: false,
     receiveNewsletter: true,
-    shareActivity: false, // Added this as a new default
+    shareActivity: false,
   });
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
 
@@ -80,7 +83,6 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (currentUser) {
-        setIsLoadingAddresses(true); // Start loading addresses
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
@@ -89,6 +91,7 @@ export default function ProfilePage() {
           setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
           setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
         } else {
+          // If profile doesn't exist, create it (this might have been handled in signup, but good to have a fallback)
           const newProfileData: UserProfileDocument = {
             uid: currentUser.uid,
             email: currentUser.email || '',
@@ -108,16 +111,8 @@ export default function ProfilePage() {
             toast({ title: "خطا", description: "مشکلی در ایجاد پروفایل شما پیش آمد.", variant: "destructive" });
           }
         }
-        // Fetch addresses after profile is loaded or created
-        const addressesCol = collection(db, 'users', currentUser.uid, 'addresses');
-        const qAddr = query(addressesCol, orderBy('createdAt', 'desc'));
-        const addressSnapshot = await getDocs(qAddr);
-        const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
-        setAddresses(fetchedAddresses);
-        setIsLoadingAddresses(false); // End loading addresses
       } else {
         setProfile(null);
-        setAddresses([]);
       }
     };
     if (!authLoading) {
@@ -126,12 +121,40 @@ export default function ProfilePage() {
   }, [currentUser, authLoading, toast]);
 
   useEffect(() => {
+    const fetchAddresses = async () => {
+      if (currentUser) {
+        setIsLoadingAddresses(true);
+        try {
+          const addressesColRef = collection(db, 'users', currentUser.uid, 'addresses');
+          const qAddr = query(addressesColRef, orderBy('createdAt', 'desc'));
+          const addressSnapshot = await getDocs(qAddr);
+          const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
+          setAddresses(fetchedAddresses);
+        } catch (error) {
+          console.error("Error fetching addresses:", error);
+          toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
+        } finally {
+          setIsLoadingAddresses(false);
+        }
+      } else {
+        setAddresses([]);
+      }
+    };
+     if (currentUser) {
+      fetchAddresses();
+    }
+  }, [currentUser, toast]);
+
+
+  useEffect(() => {
     const fetchOrders = async () => {
       if (!currentUser) {
         setUserOrders([]);
+        setOrdersFetchError(null);
         return;
       }
       setIsLoadingOrders(true);
+      setOrdersFetchError(null);
       try {
         const ordersCol = collection(db, 'orders');
         const q = query(ordersCol, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
@@ -141,12 +164,25 @@ export default function ProfilePage() {
           ...docSnap.data()
         } as OrderDocument));
         setUserOrders(fetchedOrders);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching orders: ", error);
-        if (error instanceof Error && error.message.includes("indexes?create_composite")) {
-             toast({ title: "خطای پایگاه داده", description: "ایندکس مورد نیاز برای نمایش سفارش‌ها وجود ندارد. لطفاً با راهنمایی کنسول Firebase ایندکس را ایجاد کنید.", variant: "destructive", duration: 10000 });
+        if (error.message && error.message.includes("indexes?create_composite")) {
+            const firestoreConsoleLink = error.message.substring(error.message.indexOf('https://console.firebase.google.com'));
+            const errorMessage = (
+                <>
+                    ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً 
+                    <a href={firestoreConsoleLink} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
+                        با استفاده از این لینک در کنسول Firebase
+                    </a>
+                    ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.
+                </>
+            );
+            setOrdersFetchError(errorMessage as unknown as string); // Cast to string for state, render as JSX
+            toast({ title: "خطای پایگاه داده", description: errorMessage, variant: "destructive", duration: 15000 });
         } else {
-            toast({ title: "خطا", description: "مشکلی در بارگذاری سفارش‌ها پیش آمد.", variant: "destructive" });
+            const genericError = "مشکلی در بارگذاری سفارش‌ها پیش آمد.";
+            setOrdersFetchError(genericError);
+            toast({ title: "خطا", description: genericError, variant: "destructive" });
         }
       } finally {
         setIsLoadingOrders(false);
@@ -169,6 +205,7 @@ export default function ProfilePage() {
       return;
     }
     
+    const userDocRef = doc(db, 'users', currentUser.uid);
     const updates: Partial<UserProfileDocument> = { updatedAt: Timestamp.now() };
     let authProfileUpdated = false;
 
@@ -189,7 +226,6 @@ export default function ProfilePage() {
     }
 
     try {
-      const userDocRef = doc(db, 'users', currentUser.uid);
       await updateDoc(userDocRef, updates);
       
       setProfile(prev => prev ? ({ ...prev, ...updates, fullName: updates.fullName ?? prev.fullName, phoneNumber: updates.phoneNumber ?? prev.phoneNumber }) : null);
@@ -337,6 +373,7 @@ export default function ProfilePage() {
         toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما با موفقیت اضافه شد." });
       }
       
+      // Refetch addresses
       setIsLoadingAddresses(true);
       const q = query(addressesColRef, orderBy('createdAt', 'desc'));
       const addressSnapshot = await getDocs(q);
@@ -365,6 +402,7 @@ export default function ProfilePage() {
       
       let newAddresses = addresses.filter(addr => addr.id !== addressId);
       if (addressToDelete?.isDefault && newAddresses.length > 0 && !newAddresses.some(addr => addr.isDefault)) {
+        // If the deleted address was default, and there are other addresses, make the first one default
         const newDefaultAddress = newAddresses[0];
         const addressRef = doc(db, 'users', currentUser.uid, 'addresses', newDefaultAddress.id);
         await updateDoc(addressRef, { isDefault: true });
@@ -405,7 +443,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (authLoading || (!currentUser && !authLoading && profile === undefined) ) { // Changed profile === null to profile === undefined for initial loading state
+  if (authLoading || (!currentUser && !authLoading && profile === undefined) ) {
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -456,39 +494,82 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="md:col-span-3 space-y-8">
+          <div className="md:col-span-3 space-y-8"> {/* Changed from md:col-span-2 to md:col-span-3 for full width */}
+            {/* Personal Info Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
-                <div className="flex items-center gap-3"> <User className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">اطلاعات شخصی</CardTitle> </div>
-                {!isEditingInfo ? ( <Button variant="outline" size="sm" onClick={() => { setIsEditingInfo(true); if(profile) setTempProfileData({fullName: profile.fullName || currentUser?.displayName || '', phoneNumber: profile.phoneNumber || ''})}}> <Edit3 className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ویرایش </Button> ) : (
-                  <div className="flex gap-2"> <Button variant="default" size="sm" onClick={handleSaveInfo}> <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ذخیره </Button> <Button variant="ghost" size="sm" onClick={handleCancelEdit}> لغو </Button> </div>
+                <div className="flex items-center gap-3">
+                  <User className="h-6 w-6 text-primary" />
+                  <CardTitle className="text-2xl">اطلاعات شخصی</CardTitle>
+                </div>
+                {!isEditingInfo ? (
+                  <Button variant="outline" size="sm" onClick={() => { setIsEditingInfo(true); if(profile) setTempProfileData({fullName: profile.fullName || currentUser?.displayName || '', phoneNumber: profile.phoneNumber || ''})}}>
+                    <Edit3 className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ویرایش
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="default" size="sm" onClick={handleSaveInfo}>
+                      <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ذخیره
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                      لغو
+                    </Button>
+                  </div>
                 )}
               </CardHeader>
               <CardContent className="space-y-4 pt-2">
                 {isEditingInfo ? (
                   <>
-                    <div> <Label htmlFor="fullNameEdit">نام و نام خانوادگی</Label> <Input id="fullNameEdit" name="fullName" value={tempProfileData.fullName} onChange={handleInputChange} className="mt-1" /> </div>
-                    <div> <Label htmlFor="emailEdit">آدرس ایمیل (غیرقابل ویرایش)</Label> <Input id="emailEdit" name="email" type="email" value={profile?.email || currentUser?.email || ''} dir="ltr" className="mt-1" disabled /> </div>
-                    <div> <Label htmlFor="phoneNumberEdit">شماره تماس</Label> <Input id="phoneNumberEdit" name="phoneNumber" type="tel" value={tempProfileData.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" /> </div>
+                    <div>
+                      <Label htmlFor="fullNameEdit">نام و نام خانوادگی</Label>
+                      <Input id="fullNameEdit" name="fullName" value={tempProfileData.fullName} onChange={handleInputChange} className="mt-1" />
+                    </div>
+                    <div>
+                      <Label htmlFor="emailEdit">آدرس ایمیل (غیرقابل ویرایش)</Label>
+                      <Input id="emailEdit" name="email" type="email" value={profile?.email || currentUser?.email || ''} dir="ltr" className="mt-1" disabled />
+                    </div>
+                    <div>
+                      <Label htmlFor="phoneNumberEdit">شماره تماس</Label>
+                      <Input id="phoneNumberEdit" name="phoneNumber" type="tel" value={tempProfileData.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" />
+                       <p className="text-xs text-muted-foreground mt-1">توجه: ذخیره شماره تماس در حال حاضر فقط نمایشی است و به صورت دائمی ذخیره نمی‌شود.</p>
+                    </div>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">نام و نام خانوادگی:</span> <span className="font-medium">{profile?.fullName || currentUser?.displayName || "هنوز وارد نشده"}</span> </div>
-                    <div className="flex items-center justify-between py-2 border-b border-dashed"> <span className="text-sm text-muted-foreground">آدرس ایمیل:</span> <span className="font-medium dir-ltr">{profile?.email || currentUser?.email || "هنوز وارد نشده"}</span> </div>
-                    <div className="flex items-center justify-between py-2"> <span className="text-sm text-muted-foreground">شماره تماس:</span> <span className="font-medium dir-ltr">{profile?.phoneNumber || "ثبت نشده"}</span> </div>
+                    <div className="flex items-center justify-between py-2 border-b border-dashed">
+                      <span className="text-sm text-muted-foreground">نام و نام خانوادگی:</span>
+                      <span className="font-medium">{profile?.fullName || currentUser?.displayName || "هنوز وارد نشده"}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-dashed">
+                      <span className="text-sm text-muted-foreground">آدرس ایمیل:</span>
+                      <span className="font-medium dir-ltr">{profile?.email || currentUser?.email || "هنوز وارد نشده"}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm text-muted-foreground">شماره تماس:</span>
+                      <span className="font-medium dir-ltr">{profile?.phoneNumber || "ثبت نشده"}</span>
+                    </div>
                   </>
                 )}
               </CardContent>
             </Card>
 
+            {/* Address Management Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
-                 <div className="flex items-center gap-3"> <MapPin className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">مدیریت آدرس‌ها</CardTitle> </div>
-                <Button variant="outline" size="sm" onClick={handleOpenAddAddressDialog}> <PlusCircle className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> افزودن آدرس جدید </Button>
+                 <div className="flex items-center gap-3">
+                  <MapPin className="h-6 w-6 text-primary" />
+                  <CardTitle className="text-2xl">مدیریت آدرس‌ها</CardTitle>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleOpenAddAddressDialog}>
+                  <PlusCircle className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> افزودن آدرس جدید
+                </Button>
               </CardHeader>
               <CardContent>
                 {isLoadingAddresses ? (
-                  <div className="text-center py-4"> <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /> <p className="text-sm text-muted-foreground mt-2">در حال بارگذاری آدرس‌ها...</p> </div>
+                  <div className="text-center py-4">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground mt-2">در حال بارگذاری آدرس‌ها...</p>
+                  </div>
                 ) : addresses.length > 0 ? (
                     <div className="space-y-4">
                         {addresses.map(addr => (
@@ -503,88 +584,312 @@ export default function ProfilePage() {
                                         <p className="text-sm text-muted-foreground">کدپستی: {addr.postalCode} - تلفن: <span dir="ltr">{addr.phoneNumber}</span></p>
                                     </div>
                                     <div className="flex gap-1 flex-shrink-0">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditAddressDialog(addr)}> <Edit3 className="h-4 w-4" /> <span className="sr-only">ویرایش آدرس</span> </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteAddress(addr.id)} > <Trash2 className="h-4 w-4" /> <span className="sr-only">حذف آدرس</span> </Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditAddressDialog(addr)}>
+                                            <Edit3 className="h-4 w-4" />
+                                            <span className="sr-only">ویرایش آدرس</span>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteAddress(addr.id)} >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">حذف آدرس</span>
+                                        </Button>
                                     </div>
                                 </div>
-                                {!addr.isDefault && ( <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs text-primary hover:text-primary/80" onClick={() => handleSetDefaultAddress(addr.id)}> تنظیم به عنوان آدرس پیش‌فرض </Button> )}
+                                {!addr.isDefault && (
+                                    <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs text-primary hover:text-primary/80" onClick={() => handleSetDefaultAddress(addr.id)}>
+                                        تنظیم به عنوان آدرس پیش‌فرض
+                                    </Button>
+                                )}
                             </Card>
                         ))}
                     </div>
-                ) : ( <p className="text-muted-foreground text-center py-4">هنوز آدرسی ثبت نکرده‌اید.</p> )}
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">هنوز آدرسی ثبت نکرده‌اید.</p>
+                )}
               </CardContent>
             </Card>
 
+            {/* Order History Card */}
             <Card className="shadow-lg">
-              <CardHeader className="flex items-center gap-3"> <ShoppingBag className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle> </CardHeader>
+              <CardHeader className="flex items-center gap-3">
+                <ShoppingBag className="h-6 w-6 text-primary" />
+                <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle>
+              </CardHeader>
               <CardContent>
-                {isLoadingOrders ? ( <div className="text-center py-4"> <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" /> <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p> </div>
+                {isLoadingOrders ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" />
+                    <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p>
+                  </div>
+                ) : ordersFetchError ? (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>خطا در بارگذاری سفارش‌ها</AlertTitle>
+                        <AlertDescription>{ordersFetchError}</AlertDescription>
+                    </Alert>
                 ) : userOrders.length > 0 ? (
                   <Table>
-                    <TableHeader> <TableRow> <TableHead>شناسه سفارش</TableHead> <TableHead className="hidden sm:table-cell">تاریخ</TableHead> <TableHead>مبلغ کل</TableHead> <TableHead>وضعیت</TableHead> <TableHead className="text-left">جزئیات</TableHead> </TableRow> </TableHeader>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>شناسه سفارش</TableHead>
+                        <TableHead className="hidden sm:table-cell">تاریخ</TableHead>
+                        <TableHead>مبلغ کل</TableHead>
+                        <TableHead>وضعیت</TableHead>
+                        <TableHead className="text-left">جزئیات</TableHead>
+                      </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {userOrders.map((order) => (
                         <TableRow key={order.id}>
                           <TableCell className="font-mono text-xs">{order.paymentDetails?.orderId || order.id}</TableCell>
                           <TableCell className="hidden sm:table-cell">{(order.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'}</TableCell>
                           <TableCell>{formatOrderPrice(order.totalAmount)}</TableCell>
-                          <TableCell> <Badge variant={getOrderStatusBadgeVariant(order.status)} className={ order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }> {order.status} </Badge> </TableCell>
-                          <TableCell className="text-left"> <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}> <Eye className="h-4 w-4" /> <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span> </Button> </TableCell>
+                          <TableCell>
+                            <Badge variant={getOrderStatusBadgeVariant(order.status)}
+                              className={
+                                order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                                order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                                order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                              }
+                            >
+                              {order.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-left">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
+                              <Eye className="h-4 w-4" />
+                              <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                ) : ( <p className="text-muted-foreground text-center py-4">شما تاکنون هیچ سفارشی ثبت نکرده‌اید.</p> )}
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">شما تاکنون هیچ سفارشی ثبت نکرده‌اید.</p>
+                )}
               </CardContent>
             </Card>
-
+            
+            {/* Account Settings Card */}
             <Card className="shadow-lg">
-              <CardHeader className="flex items-center gap-3"> <Settings className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حساب</CardTitle> </CardHeader>
+              <CardHeader className="flex items-center gap-3">
+                <Settings className="h-6 w-6 text-primary" />
+                <CardTitle className="text-2xl">تنظیمات حساب</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-3 pt-3">
-                {!showChangePasswordForm ? ( <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" onClick={() => setShowChangePasswordForm(true)}> <Lock className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" /> تغییر رمز عبور </Button>
+                {!showChangePasswordForm ? (
+                  <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" onClick={() => setShowChangePasswordForm(true)}>
+                    <Lock className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" /> تغییر رمز عبور
+                  </Button>
                 ) : (
                   <form onSubmit={handleChangePassword} className="space-y-4 border p-4 rounded-md bg-muted/20">
                     <h3 className="text-lg font-semibold mb-2 text-foreground">تغییر رمز عبور</h3>
-                    {passwordError && ( <Alert variant="destructive" className="mb-3"> <Lock className="h-4 w-4" /> <AlertTitle>خطا</AlertTitle> <AlertDescription>{passwordError}</AlertDescription> </Alert> )}
-                    <div className="space-y-2 relative"> <Label htmlFor="currentPassword">رمز عبور فعلی</Label> <Input id="currentPassword" type={showCurrentPass ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} dir="ltr" className="pr-10" required /> <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowCurrentPass(!showCurrentPass)} aria-label="نمایش/مخفی کردن رمز عبور فعلی"> {showCurrentPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} </Button> </div>
-                    <div className="space-y-2 relative"> <Label htmlFor="newPassword">رمز عبور جدید</Label> <Input id="newPassword" type={showNewPass ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} dir="ltr" className="pr-10" required /> <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowNewPass(!showNewPass)} aria-label="نمایش/مخفی کردن رمز عبور جدید"> {showNewPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} </Button> </div>
-                    <div className="space-y-2 relative"> <Label htmlFor="confirmNewPassword">تکرار رمز عبور جدید</Label> <Input id="confirmNewPassword" type={showConfirmPass ? "text" : "password"} value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} dir="ltr" className="pr-10" required /> <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPass(!showConfirmPass)} aria-label="نمایش/مخفی کردن تکرار رمز عبور جدید"> {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} </Button> </div>
-                    <div className="flex gap-2 pt-2"> <Button type="submit" disabled={isChangingPassword}> {isChangingPassword ? ( <> <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" /> در حال ذخیره... </> ) : ( <> <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ذخیره تغییرات رمز </> )} </Button> <Button type="button" variant="ghost" onClick={() => { setShowChangePasswordForm(false); setPasswordError(null); setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword(''); }}> لغو </Button> </div>
+                    {passwordError && (
+                      <Alert variant="destructive" className="mb-3">
+                        <Lock className="h-4 w-4" />
+                        <AlertTitle>خطا</AlertTitle>
+                        <AlertDescription>{passwordError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="currentPassword">رمز عبور فعلی</Label>
+                      <Input id="currentPassword" type={showCurrentPass ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} dir="ltr" className="pr-10" required />
+                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowCurrentPass(!showCurrentPass)} aria-label="نمایش/مخفی کردن رمز عبور فعلی">
+                        {showCurrentPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="newPassword">رمز عبور جدید</Label>
+                      <Input id="newPassword" type={showNewPass ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} dir="ltr" className="pr-10" required />
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowNewPass(!showNewPass)} aria-label="نمایش/مخفی کردن رمز عبور جدید">
+                        {showNewPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="confirmNewPassword">تکرار رمز عبور جدید</Label>
+                      <Input id="confirmNewPassword" type={showConfirmPass ? "text" : "password"} value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} dir="ltr" className="pr-10" required />
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPass(!showConfirmPass)} aria-label="نمایش/مخفی کردن تکرار رمز عبور جدید">
+                        {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button type="submit" disabled={isChangingPassword}>
+                        {isChangingPassword ? (
+                          <>
+                            <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" /> در حال ذخیره...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> ذخیره تغییرات رمز
+                          </>
+                        )}
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => { setShowChangePasswordForm(false); setPasswordError(null); setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword(''); }}>
+                        لغو
+                      </Button>
+                    </div>
                   </form>
                 )}
               </CardContent>
             </Card>
             
+            {/* Privacy Settings Card */}
             <Card className="shadow-lg">
-                <CardHeader className="flex items-center gap-3"> <ShieldCheck className="h-6 w-6 text-primary" /> <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle> </CardHeader>
+                <CardHeader className="flex items-center gap-3">
+                    <ShieldCheck className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-5 pt-3">
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label> <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p> </div> <Switch id="showPublicProfile" checked={privacySettings?.showPublicProfile || false} onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)} aria-label="نمایش پروفایل عمومی" disabled={isSavingPrivacy} /> </div> <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label> <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p> </div> <Switch id="receiveNewsletter" checked={privacySettings?.receiveNewsletter || false} onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)} aria-label="دریافت خبرنامه" disabled={isSavingPrivacy} /> </div>
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                        <div>
+                            <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p>
+                        </div>
+                        <Switch
+                            id="showPublicProfile"
+                            checked={privacySettings?.showPublicProfile || false}
+                            onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)}
+                            aria-label="نمایش پروفایل عمومی"
+                            disabled={isSavingPrivacy}
+                        />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                        <div>
+                            <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p>
+                        </div>
+                        <Switch
+                            id="receiveNewsletter"
+                            checked={privacySettings?.receiveNewsletter || false}
+                            onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)}
+                            aria-label="دریافت خبرنامه"
+                             disabled={isSavingPrivacy}
+                        />
+                    </div>
                      <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20"> <div> <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت خرید با شرکای تجاری (نمایشی)</Label> <p className="text-xs text-muted-foreground mt-0.5">برای دریافت پیشنهادات شخصی‌سازی شده‌تر.</p> </div> <Switch id="shareActivity" checked={privacySettings?.shareActivity || false} onCheckedChange={(checked) => handlePrivacySettingChange('shareActivity', checked)} aria-label="اشتراک گذاری فعالیت" disabled={isSavingPrivacy} /> </div>
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
+                        <div>
+                            <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت خرید با شرکای تجاری (نمایشی)</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">برای دریافت پیشنهادات شخصی‌سازی شده‌تر.</p>
+                        </div>
+                        <Switch
+                            id="shareActivity"
+                            checked={privacySettings?.shareActivity || false}
+                            onCheckedChange={(checked) => handlePrivacySettingChange('shareActivity', checked)}
+                            aria-label="اشتراک گذاری فعالیت"
+                             disabled={isSavingPrivacy}
+                        />
+                    </div>
                 </CardContent>
-                <CardFooter> <p className="text-xs text-muted-foreground">تغییرات تنظیمات حریم خصوصی در پایگاه داده ذخیره می‌شود.</p> </CardFooter>
+                <CardFooter>
+                    <p className="text-xs text-muted-foreground">
+                        تغییرات تنظیمات حریم خصوصی شما در پایگاه داده ذخیره می‌شود.
+                    </p>
+                </CardFooter>
             </Card>
           </div>
         </div>
       </main>
 
+      {/* Order Details Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(isOpen) => !isOpen && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80svh] flex flex-col">
-          {selectedOrder && ( <> <DialogHeader> <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle> <DialogDescription> تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت: <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)} className={ selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' : selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : '' }>{selectedOrder.status}</Badge> </DialogDescription> </DialogHeader> <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3"> <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4> {selectedOrder.items.map((item: OrderItem, index: number) => ( <div key={item.productId + '-' + index} className="flex items-center gap-3 border-b pb-2"> {(item.imageUrl && item.imageUrl.trim() !== "") ? ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0"> <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} /> </div> ) : ( <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-muted-foreground"/></div> )} <div className="flex-grow"> <p className="font-medium text-sm">{item.name}</p> <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p> <p className="text-xs text-muted-foreground">قیمت واحد: {formatOrderPrice(item.price)}</p> </div> <p className="text-sm font-semibold">{ formatOrderPrice(item.price * item.quantity) }</p> </div> ))} {selectedOrder.shippingAddress && ( <div className="pt-3"> <h4 className="font-semibold mb-1">آدرس ارسال:</h4> <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p> </div> )} <Separator className="my-3" /> <div className="flex justify-between items-center font-bold text-md"> <span>مبلغ کل سفارش:</span> <span>{formatOrderPrice(selectedOrder.totalAmount)}</span> </div> </div> <DialogFooter className="mt-auto pt-4 border-t"> <DialogClose asChild> <Button type="button" variant="outline">بستن</Button> </DialogClose> </DialogFooter> </> )} </DialogContent>
+          {selectedOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle>
+                <DialogDescription>
+                  تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت:
+                  <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)}
+                    className={
+                      selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200 mr-1' :
+                      selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 mr-1' :
+                      selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200 mr-1' :
+                      selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200 mr-1' : 'mr-1'
+                    }
+                  >
+                    {selectedOrder.status}
+                  </Badge>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3">
+                <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4>
+                {selectedOrder.items.map((item: OrderItem, index: number) => (
+                  <div key={item.productId + '-' + index} className="flex items-center gap-3 border-b pb-2">
+                    {(item.imageUrl && item.imageUrl.trim() !== "") ? (
+                      <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                        <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} />
+                      </div>
+                    ) : (
+                      <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-muted-foreground"/></div>
+                    )}
+                    <div className="flex-grow">
+                      <p className="font-medium text-sm">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p>
+                      <p className="text-xs text-muted-foreground">قیمت واحد: {formatOrderPrice(item.price)}</p>
+                    </div>
+                    <p className="text-sm font-semibold">{ formatOrderPrice(item.price * item.quantity) }</p>
+                  </div>
+                ))}
+                {selectedOrder.shippingAddress && (
+                    <div className="pt-3">
+                        <h4 className="font-semibold mb-1">آدرس ارسال:</h4>
+                        <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p>
+                    </div>
+                )}
+                <Separator className="my-3" />
+                <div className="flex justify-between items-center font-bold text-md">
+                  <span>مبلغ کل سفارش:</span>
+                  <span>{formatOrderPrice(selectedOrder.totalAmount)}</span>
+                </div>
+              </div>
+              <DialogFooter className="mt-auto pt-4 border-t">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">بستن</Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
       </Dialog>
 
+      {/* Add/Edit Address Dialog */}
        <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader> <DialogTitle>{editingAddress ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}</DialogTitle> <DialogDescription> {editingAddress ? 'اطلاعات آدرس خود را ویرایش کنید.' : 'یک آدرس جدید برای ارسال سفارش‌ها وارد کنید.'} </DialogDescription> </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingAddress ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}</DialogTitle>
+            <DialogDescription>
+              {editingAddress ? 'اطلاعات آدرس خود را ویرایش کنید.' : 'یک آدرس جدید برای ارسال سفارش‌ها وارد کنید.'}
+            </DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4"> <Label htmlFor="recipientNameDialog" className="text-right col-span-1">نام گیرنده</Label> <Input id="recipientNameDialog" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" /> </div>
-            <div className="grid grid-cols-4 items-center gap-4"> <Label htmlFor="streetDialog" className="text-right col-span-1">آدرس پستی</Label> <Textarea id="streetDialog" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" /> </div>
-            <div className="grid grid-cols-4 items-center gap-4"> <Label htmlFor="cityDialog" className="text-right col-span-1">شهر</Label> <Input id="cityDialog" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" /> </div>
-            <div className="grid grid-cols-4 items-center gap-4"> <Label htmlFor="postalCodeDialog" className="text-right col-span-1">کد پستی</Label> <Input id="postalCodeDialog" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" /> </div>
-            <div className="grid grid-cols-4 items-center gap-4"> <Label htmlFor="addressPhoneNumberDialog" className="text-right col-span-1">شماره تماس</Label> <Input id="addressPhoneNumberDialog" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" /> </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="recipientNameDialog" className="text-right col-span-1">نام گیرنده</Label>
+              <Input id="recipientNameDialog" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="streetDialog" className="text-right col-span-1">آدرس پستی</Label>
+              <Textarea id="streetDialog" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="cityDialog" className="text-right col-span-1">شهر</Label>
+              <Input id="cityDialog" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="postalCodeDialog" className="text-right col-span-1">کد پستی</Label>
+              <Input id="postalCodeDialog" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="addressPhoneNumberDialog" className="text-right col-span-1">شماره تماس</Label>
+              <Input id="addressPhoneNumberDialog" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+            </div>
           </div>
-          <DialogFooter> <Button type="button" variant="outline" onClick={() => setIsAddressDialogOpen(false)}>لغو</Button> <Button type="button" onClick={handleSaveAddress}>ذخیره آدرس</Button> </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsAddressDialogOpen(false)}>لغو</Button>
+            <Button type="button" onClick={handleSaveAddress}>ذخیره آدرس</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Footer />
