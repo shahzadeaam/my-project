@@ -13,9 +13,9 @@ import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase'; 
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Added updateProfile
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
+import { AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -48,14 +48,19 @@ export default function SignupPage() {
     }
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Set display name
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: fullName,
+        });
+      }
+      
       toast({
         title: 'ثبت نام موفق!',
         description: 'حساب کاربری شما با موفقیت ایجاد شد. اکنون به پروفایل خود هدایت می‌شوید.',
         variant: 'default',
       });
-      // fullName را می‌توانید بعداً در پروفایل کاربر در Firestore ذخیره کنید.
-      console.log('Full name (for potential later use):', fullName);
       router.push('/profile'); 
     } catch (err: any) {
       let friendlyMessage = 'خطایی در هنگام ثبت نام رخ داد. لطفا دوباره تلاش کنید.';
@@ -134,7 +139,7 @@ export default function SignupPage() {
                   placeholder="حداقل ۶ کاراکتر" 
                   required 
                   dir="ltr" 
-                  className="h-12 text-base pr-10" // Added pr-10 for icon spacing
+                  className="h-12 text-base pr-10" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
@@ -143,7 +148,7 @@ export default function SignupPage() {
                     type="button" 
                     variant="ghost" 
                     size="icon" 
-                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" // Adjusted top position
+                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" 
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? "مخفی کردن رمز عبور" : "نمایش رمز عبور"}
                     disabled={isLoading}
@@ -159,7 +164,7 @@ export default function SignupPage() {
                   placeholder="رمز عبور خود را تکرار کنید" 
                   required 
                   dir="ltr" 
-                  className="h-12 text-base pr-10" // Added pr-10 for icon spacing
+                  className="h-12 text-base pr-10" 
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   disabled={isLoading}
@@ -168,7 +173,7 @@ export default function SignupPage() {
                     type="button" 
                     variant="ghost" 
                     size="icon" 
-                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" // Adjusted top position
+                    className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground" 
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     aria-label={showConfirmPassword ? "مخفی کردن تکرار رمز عبور" : "نمایش تکرار رمز عبور"}
                     disabled={isLoading}

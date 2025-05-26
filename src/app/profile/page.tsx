@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye } from 'lucide-react';
-import { mockOrders, type Order } from '@/data/orders'; // Assuming mockOrders are here
+import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info } from 'lucide-react';
+import { mockOrders, type Order } from '@/data/orders'; 
 import Image from 'next/image';
 import {
   Dialog,
@@ -23,40 +23,87 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-// import type { Metadata } from 'next'; // Metadata cannot be used in client components
+import { useAuth } from '@/context/auth-context';
+import { updateProfile } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-// Cannot use metadata in client component, would need to move to parent or make this a server component
-// export const metadata: Metadata = {
-//   title: 'پروفایل کاربری - نیلوفر بوتیک',
-//   description: 'مدیریت اطلاعات کاربری و مشاهده تاریخچه سفارش‌ها در نیلوفر بوتیک.',
-// };
 
 interface UserProfile {
   fullName: string;
   email: string;
-  phoneNumber: string;
+  phoneNumber: string; // Remains mock for now
 }
 
 export default function ProfilePage() {
+  const { currentUser, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [isEditingInfo, setIsEditingInfo] = useState(false);
+  
   const [profile, setProfile] = useState<UserProfile>({
-    fullName: 'کاربر نمونه نیلوفر',
-    email: 'user.niloofar@example.com',
-    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹',
+    fullName: '',
+    email: '',
+    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', // Mock data, not from Firebase
   });
   const [tempProfile, setTempProfile] = useState<UserProfile>(profile);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  useEffect(() => {
+    if (currentUser) {
+      const newProfileData = {
+        fullName: currentUser.displayName || 'کاربر نمونه',
+        email: currentUser.email || 'user@example.com',
+        phoneNumber: profile.phoneNumber, // Keep local phone number for now
+      };
+      setProfile(newProfileData);
+      setTempProfile(newProfileData);
+    } else if (!authLoading) {
+      // If no user and not loading, reset or redirect (though AuthButtons should handle redirect usually)
+      // For now, just clear profile if user logs out
+      const defaultProfile = {
+        fullName: 'کاربر نمونه',
+        email: 'user@example.com',
+        phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹',
+      };
+      setProfile(defaultProfile);
+      setTempProfile(defaultProfile);
+    }
+  }, [currentUser, authLoading, profile.phoneNumber]);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setTempProfile(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveInfo = () => {
-    setProfile(tempProfile);
+  const handleSaveInfo = async () => {
+    if (!currentUser) {
+      toast({ title: "خطا", description: "برای ویرایش اطلاعات باید وارد شده باشید.", variant: "destructive" });
+      return;
+    }
+
     setIsEditingInfo(false);
-    // In a real app, call an API to save data here
-    console.log('Profile info saved (mock):', tempProfile);
+    try {
+      if (tempProfile.fullName !== profile.fullName && auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: tempProfile.fullName });
+      }
+      // Update local profile state
+      setProfile({
+        fullName: tempProfile.fullName,
+        email: tempProfile.email, // Email is read-only, so it comes from tempProfile which should be same as profile.email
+        phoneNumber: tempProfile.phoneNumber, // Phone number is updated locally
+      });
+      toast({ title: "اطلاعات ذخیره شد", description: "اطلاعات پروفایل شما (نام و شماره تماس نمایشی) به‌روزرسانی شد." });
+      if (tempProfile.phoneNumber !== profile.phoneNumber) {
+         toast({ title: "توجه", description: "شماره تماس در حال حاضر به صورت نمایشی ذخیره می‌شود و در سرور به‌روز نمی‌شود.", variant: "default", duration: 7000});
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل رخ داد.", variant: "destructive" });
+      // Revert tempProfile if Firebase update fails
+      setTempProfile(profile);
+    }
   };
 
   const handleCancelEdit = () => {
@@ -67,17 +114,47 @@ export default function ProfilePage() {
   const getOrderStatusBadgeVariant = (status: Order['status']): "default" | "secondary" | "outline" | "destructive" => {
     switch (status) {
       case 'تحویل داده شده':
-        return "default"; // Typically green, but default is primary here
+        return "default"; 
       case 'ارسال شده':
-        return "secondary"; // Blue/Info
+        return "secondary"; 
       case 'در حال پردازش':
-        return "outline"; // Yellow/Warning - using outline as substitute
+        return "outline"; 
       case 'لغو شده':
         return "destructive";
       default:
         return "outline";
     }
   };
+
+  if (authLoading) {
+    return (
+        <div className="flex flex-col min-h-screen bg-background">
+            <Header />
+            <main className="flex-grow flex items-center justify-center">
+                <p>در حال بارگذاری اطلاعات کاربر...</p>
+            </main>
+            <Footer />
+        </div>
+    );
+  }
+
+  if (!currentUser && !authLoading) {
+     return (
+        <div className="flex flex-col min-h-screen bg-background">
+            <Header />
+            <main className="flex-grow flex flex-col items-center justify-center text-center p-6">
+                <User className="h-16 w-16 text-muted-foreground mb-4" />
+                <h1 className="text-2xl font-semibold mb-2">صفحه پروفایل</h1>
+                <p className="text-muted-foreground mb-6">برای مشاهده و مدیریت پروفایل خود، لطفا ابتدا وارد شوید یا ثبت نام کنید.</p>
+                <div className="flex gap-4">
+                    <Button asChild><Link href="/auth/login">ورود</Link></Button>
+                    <Button variant="outline" asChild><Link href="/auth/signup">ثبت نام</Link></Button>
+                </div>
+            </main>
+            <Footer />
+        </div>
+    );
+  }
 
 
   return (
@@ -94,24 +171,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Left Column - Navigation/Quick Settings (optional for now) */}
-          {/* <div className="md:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>دسترسی سریع</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="ghost" className="w-full justify-start"><User className="ml-2 h-4 w-4" /> اطلاعات شخصی</Button>
-                <Button variant="ghost" className="w-full justify-start"><ListOrdered className="ml-2 h-4 w-4" /> تاریخچه سفارشات</Button>
-                <Button variant="ghost" className="w-full justify-start"><Lock className="ml-2 h-4 w-4" /> تغییر رمز عبور</Button>
-                <Button variant="ghost" className="w-full justify-start"><Settings className="ml-2 h-4 w-4" /> تنظیمات حساب</Button>
-              </CardContent>
-            </Card>
-          </div> */}
-
-          {/* Right Column - Main Content */}
           <div className="md:col-span-3 space-y-8">
-            {/* Personal Information Section */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -141,12 +201,13 @@ export default function ProfilePage() {
                       <Input id="fullName" name="fullName" value={tempProfile.fullName} onChange={handleInputChange} className="mt-1" />
                     </div>
                     <div>
-                      <Label htmlFor="email">آدرس ایمیل</Label>
-                      <Input id="email" name="email" type="email" value={tempProfile.email} onChange={handleInputChange} dir="ltr" className="mt-1" />
+                      <Label htmlFor="email">آدرس ایمیل (غیرقابل ویرایش)</Label>
+                      <Input id="email" name="email" type="email" value={tempProfile.email} dir="ltr" className="mt-1" disabled />
                     </div>
                     <div>
-                      <Label htmlFor="phoneNumber">شماره تماس</Label>
+                      <Label htmlFor="phoneNumber">شماره تماس (ذخیره‌سازی نمایشی)</Label>
                       <Input id="phoneNumber" name="phoneNumber" type="tel" value={tempProfile.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" />
+                       <p className="text-xs text-muted-foreground mt-1">توجه: تغییرات شماره تماس در حال حاضر فقط در این صفحه نمایش داده می‌شود و در سرور ذخیره نمی‌گردد.</p>
                     </div>
                   </>
                 ) : (
@@ -161,20 +222,26 @@ export default function ProfilePage() {
                     </div>
                     <div className="flex items-center justify-between py-2">
                       <span className="text-sm text-muted-foreground">شماره تماس:</span>
-                      <span className="font-medium dir-ltr">{profile.phoneNumber}</span>
+                      <span className="font-medium dir-ltr">{profile.phoneNumber} (نمایشی)</span>
                     </div>
                   </>
                 )}
               </CardContent>
             </Card>
 
-            {/* Order History Section */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3">
                 <ShoppingBag className="h-6 w-6 text-primary" />
                 <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle>
               </CardHeader>
               <CardContent>
+                 <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 text-blue-700">
+                    <Info className="h-5 w-5 !text-blue-700" />
+                    <AlertTitle className="font-semibold">توجه: داده‌های نمایشی</AlertTitle>
+                    <AlertDescription>
+                      لیست سفارش‌ها و جزئیات آن‌ها در این بخش نمایشی است و به سفارش‌های واقعی شما مرتبط نیست. این بخش در آینده با اتصال به پایگاه داده تکمیل خواهد شد.
+                    </AlertDescription>
+                </Alert>
                 {mockOrders.length > 0 ? (
                   <Table>
                     <TableHeader>
@@ -219,24 +286,23 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Account Settings Section */}
             <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3">
                 <Settings className="h-6 w-6 text-primary" />
                 <CardTitle className="text-2xl">تنظیمات حساب</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 pt-3">
-                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto">
+                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
                     <Lock className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    تغییر رمز عبور (نمایشی)
+                    تغییر رمز عبور (به زودی)
                 </Button>
-                <Button variant="outline" className="w-full justify-start text-base py-3 h-auto">
+                <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
                     <Settings className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    مدیریت آدرس‌ها (نمایشی)
+                    مدیریت آدرس‌ها (به زودی)
                 </Button>
-                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto">
+                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
                     <User className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                    تنظیمات حریم خصوصی (نمایشی)
+                    تنظیمات حریم خصوصی (به زودی)
                 </Button>
               </CardContent>
                <CardFooter>
@@ -247,7 +313,6 @@ export default function ProfilePage() {
         </div>
       </main>
 
-      {/* Order Details Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(isOpen) => !isOpen && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80svh] flex flex-col">
           {selectedOrder && (
