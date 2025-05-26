@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Bell, UserCircle, Search } from "lucide-react";
+import { Bell, UserCircle, Search, Settings, LogOut } from "lucide-react"; // Added Settings and LogOut
 import { Input } from "@/components/ui/input";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
