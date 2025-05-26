@@ -102,26 +102,30 @@ export default function ProfilePage() {
       const newProfileData = {
         fullName: currentUser.displayName || 'کاربر نمونه',
         email: currentUser.email || 'user@example.com',
-        phoneNumber: profile.phoneNumber, // Keep mock phone number for now
+        // شماره تماس در حال حاضر از Firebase Auth خوانده نمی‌شود مگر اینکه از احراز هویت با شماره تلفن استفاده شده باشد
+        // برای این پروتوتایپ، ما آن را به صورت نمایشی نگه می‌داریم
+        phoneNumber: profile.phoneNumber, 
       };
       setProfile(newProfileData);
       setTempProfile(newProfileData);
 
+      // فیلتر کردن سفارش‌ها بر اساس UID کاربر فعلی
       const filteredOrders = mockOrders.filter(order => order.userId === currentUser.uid);
       setUserOrders(filteredOrders);
 
     } else if (!authLoading) {
+      // اگر کاربری وارد نشده باشد یا در حال بارگذاری نباشد، اطلاعات پیش‌فرض یا خالی نمایش داده می‌شود
       const defaultProfile = {
         fullName: 'کاربر نمونه',
         email: 'user@example.com',
-        phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹',
+        phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', // شماره تماس نمایشی
       };
       setProfile(defaultProfile);
       setTempProfile(defaultProfile);
-      setUserOrders([]);
-      setAddresses(initialMockAddresses); // Reset mock addresses if user logs out or no user
+      setUserOrders([]); // پاک کردن لیست سفارش‌ها
+      setAddresses(initialMockAddresses); // بازنشانی آدرس‌های نمونه
     }
-  }, [currentUser, authLoading, profile.phoneNumber]);
+  }, [currentUser, authLoading, profile.phoneNumber]); // profile.phoneNumber به وابستگی‌ها اضافه شد تا در صورت تغییر نمایشی، UI به‌روز شود
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,9 +141,14 @@ export default function ProfilePage() {
 
     setIsEditingInfo(false);
     try {
+      // به‌روزرسانی نام نمایشی (displayName) در Firebase Authentication
       if (tempProfile.fullName !== profile.fullName && auth.currentUser) {
         await updateProfile(auth.currentUser, { displayName: tempProfile.fullName });
       }
+      // به‌روزرسانی ایمیل در Firebase Authentication (نیاز به احراز هویت مجدد دارد و در این مرحله پیاده‌سازی نشده)
+      // if (tempProfile.email !== profile.email && auth.currentUser) {
+      //   await updateEmail(auth.currentUser, tempProfile.email);
+      // }
 
       setProfile({
         fullName: tempProfile.fullName,
@@ -252,7 +261,7 @@ export default function ProfilePage() {
       setAddresses(prev => prev.map(addr => addr.id === editingAddress.id ? { ...editingAddress, ...currentAddressForm } : addr));
       toast({ title: "آدرس به‌روزرسانی شد", description: "تغییرات آدرس شما (به صورت نمایشی) ذخیره شد." });
     } else {
-      const newAddress: Address = { id: `addr${Date.now()}`, ...currentAddressForm };
+      const newAddress: Address = { id: `addr${Date.now()}`, ...currentAddressForm, isDefault: addresses.length === 0 }; // Set as default if it's the first address
       setAddresses(prev => [...prev, newAddress]);
       toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما (به صورت نمایشی) اضافه شد." });
     }
@@ -261,7 +270,14 @@ export default function ProfilePage() {
   };
 
   const handleDeleteAddress = (addressId: string) => {
-    setAddresses(prev => prev.filter(addr => addr.id !== addressId));
+    setAddresses(prev => {
+        const newAddresses = prev.filter(addr => addr.id !== addressId);
+        // If the deleted address was default and there are other addresses, make the first one default
+        if (prev.find(addr => addr.id === addressId)?.isDefault && newAddresses.length > 0) {
+            newAddresses[0].isDefault = true;
+        }
+        return newAddresses;
+    });
     toast({ title: "آدرس حذف شد", description: "آدرس مورد نظر (به صورت نمایشی) حذف شد." });
     // In a real app, here you would call an API to delete from Firestore.
   };
@@ -419,8 +435,11 @@ export default function ProfilePage() {
                         {addresses.map(addr => (
                             <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-primary shadow-md' : 'shadow-sm'}`}>
                                 <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-semibold text-foreground">{addr.recipientName} {addr.isDefault && <Badge variant="secondary" className="ml-2 rtl:mr-2 text-xs">پیش‌فرض</Badge>}</p>
+                                    <div className="flex-grow">
+                                        <div className="flex items-center mb-1">
+                                            <span className="font-semibold text-foreground">{addr.recipientName}</span>
+                                            {addr.isDefault && <Badge variant="secondary" className="ml-2 rtl:mr-2 text-xs">پیش‌فرض</Badge>}
+                                        </div>
                                         <p className="text-sm text-muted-foreground">{addr.street}, {addr.city}</p>
                                         <p className="text-sm text-muted-foreground">کدپستی: {addr.postalCode} - تلفن: {addr.phoneNumber}</p>
                                     </div>
@@ -429,7 +448,7 @@ export default function ProfilePage() {
                                             <Edit3 className="h-4 w-4" />
                                             <span className="sr-only">ویرایش آدرس</span>
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteAddress(addr.id)} disabled={addr.isDefault}>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteAddress(addr.id)} disabled={addr.isDefault && addresses.length === 1}>
                                             <Trash2 className="h-4 w-4" />
                                             <span className="sr-only">حذف آدرس</span>
                                         </Button>
@@ -697,7 +716,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-muted-foreground">تعداد: {item.quantity}</p>
                       <p className="text-xs text-muted-foreground">قیمت واحد: {item.price}</p>
                     </div>
-                    <p className="text-sm font-semibold">{ (parseInt(item.price.replace(/[^\d]/g, '')) * item.quantity).toLocaleString('fa-IR') } تومان</p>
+                    <p className="text-sm font-semibold">{ (parseInt(item.price.replace(/[^\\d]/g, '')) * item.quantity).toLocaleString('fa-IR') } تومان</p>
                   </div>
                 ))}
                 {selectedOrder.shippingAddress && (
@@ -765,3 +784,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
