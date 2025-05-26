@@ -21,10 +21,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import type { Metadata } from 'next';
+// import type { Metadata } from 'next'; // Metadata cannot be used in client components
 
 // Cannot use metadata in client component, would need to move to parent or make this a server component
 // export const metadata: Metadata = {
@@ -205,12 +204,10 @@ export default function ProfilePage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-left">
-                            <DialogTrigger asChild>
                               <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
                                 <Eye className="h-4 w-4" />
                                 <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
                               </Button>
-                            </DialogTrigger>
                           </TableCell>
                         </TableRow>
                       ))}
