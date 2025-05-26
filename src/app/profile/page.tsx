@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info } from 'lucide-react';
+import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2 } from 'lucide-react';
 import { mockOrders, type Order } from '@/data/orders'; 
 import Image from 'next/image';
 import {
@@ -28,12 +28,13 @@ import { updateProfile } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 
 
 interface UserProfile {
   fullName: string;
   email: string;
-  phoneNumber: string; // Remains mock for now
+  phoneNumber: string; 
 }
 
 export default function ProfilePage() {
@@ -44,23 +45,28 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile>({
     fullName: '',
     email: '',
-    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', // Mock data, not from Firebase
+    phoneNumber: '۰۹۱۲۳۴۵۶۷۸۹', 
   });
   const [tempProfile, setTempProfile] = useState<UserProfile>(profile);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     if (currentUser) {
       const newProfileData = {
         fullName: currentUser.displayName || 'کاربر نمونه',
         email: currentUser.email || 'user@example.com',
-        phoneNumber: profile.phoneNumber, // Keep local phone number for now
+        phoneNumber: profile.phoneNumber, 
       };
       setProfile(newProfileData);
       setTempProfile(newProfileData);
+
+      // Filter mock orders based on current user's UID
+      // In a real app, you'd fetch orders from a backend for currentUser.uid
+      const filteredOrders = mockOrders.filter(order => order.userId === currentUser.uid);
+      setUserOrders(filteredOrders);
+
     } else if (!authLoading) {
-      // If no user and not loading, reset or redirect (though AuthButtons should handle redirect usually)
-      // For now, just clear profile if user logs out
       const defaultProfile = {
         fullName: 'کاربر نمونه',
         email: 'user@example.com',
@@ -68,6 +74,7 @@ export default function ProfilePage() {
       };
       setProfile(defaultProfile);
       setTempProfile(defaultProfile);
+      setUserOrders([]); // Clear orders if user logs out or is not loaded
     }
   }, [currentUser, authLoading, profile.phoneNumber]);
 
@@ -88,20 +95,19 @@ export default function ProfilePage() {
       if (tempProfile.fullName !== profile.fullName && auth.currentUser) {
         await updateProfile(auth.currentUser, { displayName: tempProfile.fullName });
       }
-      // Update local profile state
+      
       setProfile({
         fullName: tempProfile.fullName,
-        email: tempProfile.email, // Email is read-only, so it comes from tempProfile which should be same as profile.email
-        phoneNumber: tempProfile.phoneNumber, // Phone number is updated locally
+        email: tempProfile.email, 
+        phoneNumber: tempProfile.phoneNumber, 
       });
-      toast({ title: "اطلاعات ذخیره شد", description: "اطلاعات پروفایل شما (نام و شماره تماس نمایشی) به‌روزرسانی شد." });
+      toast({ title: "اطلاعات ذخیره شد", description: "نام و نام خانوادگی شما به‌روزرسانی شد." });
       if (tempProfile.phoneNumber !== profile.phoneNumber) {
          toast({ title: "توجه", description: "شماره تماس در حال حاضر به صورت نمایشی ذخیره می‌شود و در سرور به‌روز نمی‌شود.", variant: "default", duration: 7000});
       }
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل رخ داد.", variant: "destructive" });
-      // Revert tempProfile if Firebase update fails
       setTempProfile(profile);
     }
   };
@@ -131,7 +137,10 @@ export default function ProfilePage() {
         <div className="flex flex-col min-h-screen bg-background">
             <Header />
             <main className="flex-grow flex items-center justify-center">
-                <p>در حال بارگذاری اطلاعات کاربر...</p>
+                <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-muted-foreground">در حال بارگذاری اطلاعات کاربر...</p>
+                </div>
             </main>
             <Footer />
         </div>
@@ -163,7 +172,7 @@ export default function ProfilePage() {
       <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8 text-center">
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">
-            پروفایل کاربری شما
+            پروفایل کاربری {profile.fullName}
           </h1>
           <p className="mt-2 text-lg text-muted-foreground">
             اطلاعات حساب خود را مدیریت کنید و سفارش‌هایتان را پیگیری نمایید.
@@ -239,10 +248,15 @@ export default function ProfilePage() {
                     <Info className="h-5 w-5 !text-blue-700" />
                     <AlertTitle className="font-semibold">توجه: داده‌های نمایشی</AlertTitle>
                     <AlertDescription>
-                      لیست سفارش‌ها و جزئیات آن‌ها در این بخش نمایشی است و به سفارش‌های واقعی شما مرتبط نیست. این بخش در آینده با اتصال به پایگاه داده تکمیل خواهد شد.
+                      لیست سفارش‌ها در این بخش بر اساس شناسه کاربر وارد شده از داده‌های نمونه فیلتر شده است. برای مشاهده سفارش‌ها، اطمینان حاصل کنید که UID کاربر فعلی شما در فایل `src/data/orders.ts` به عنوان `userId` برای برخی سفارش‌ها تنظیم شده باشد.
                     </AlertDescription>
                 </Alert>
-                {mockOrders.length > 0 ? (
+                {authLoading ? (
+                    <div className="text-center py-4">
+                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" />
+                        <p className="text-muted-foreground">در حال بارگذاری سفارش‌ها...</p>
+                    </div>
+                ) : userOrders.length > 0 ? (
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -254,7 +268,7 @@ export default function ProfilePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockOrders.map((order) => (
+                      {userOrders.map((order) => (
                         <TableRow key={order.id}>
                           <TableCell className="font-mono text-xs">{order.id}</TableCell>
                           <TableCell className="hidden sm:table-cell">{order.date}</TableCell>
