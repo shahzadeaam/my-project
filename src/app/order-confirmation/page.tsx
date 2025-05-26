@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { CheckCircle2 } from 'lucide-react';
 import type { Metadata } from 'next';
 
@@ -47,3 +47,4 @@ export default function OrderConfirmationPage() {
     </div>
   );
 }
+
