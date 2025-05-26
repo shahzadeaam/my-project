@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff } from 'lucide-react';
+import { User, ShoppingBag, Lock, Settings, Edit3, Save, ListOrdered, Eye, Info, Loader2, KeyRound, EyeOff, MapPin, PlusCircle, Trash2 } from 'lucide-react';
 import { mockOrders, type Order } from '@/data/orders';
 import Image from 'next/image';
 import {
@@ -22,6 +22,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth } from '@/context/auth-context';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
@@ -29,6 +30,7 @@ import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
+import { Textarea } from '@/components/ui/textarea';
 
 
 interface UserProfile {
@@ -36,6 +38,21 @@ interface UserProfile {
   email: string;
   phoneNumber: string;
 }
+
+interface Address {
+  id: string;
+  recipientName: string;
+  street: string;
+  city: string;
+  postalCode: string;
+  phoneNumber: string;
+  isDefault?: boolean;
+}
+
+const initialMockAddresses: Address[] = [
+  { id: 'addr1', recipientName: 'نیلوفر محمدی', street: 'خیابان آزادی، کوچه بهار، پلاک ۱۰', city: 'تهران', postalCode: '1234567890', phoneNumber: '09123456789', isDefault: true },
+  { id: 'addr2', recipientName: 'نیلوفر محمدی (محل کار)', street: 'میدان ونک، برج نگار، طبقه ۵', city: 'تهران', postalCode: '0987654321', phoneNumber: '09120000000' },
+];
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -62,6 +79,18 @@ export default function ProfilePage() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
+  // State for address management
+  const [addresses, setAddresses] = useState<Address[]>(initialMockAddresses);
+  const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [currentAddressForm, setCurrentAddressForm] = useState<Omit<Address, 'id' | 'isDefault'>>({
+    recipientName: '',
+    street: '',
+    city: '',
+    postalCode: '',
+    phoneNumber: '',
+  });
+
 
   useEffect(() => {
     if (currentUser) {
@@ -85,6 +114,7 @@ export default function ProfilePage() {
       setProfile(defaultProfile);
       setTempProfile(defaultProfile);
       setUserOrders([]);
+      setAddresses(initialMockAddresses); // Reset mock addresses if user logs out or no user
     }
   }, [currentUser, authLoading, profile.phoneNumber]);
 
@@ -152,7 +182,6 @@ export default function ProfilePage() {
     try {
       const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
       await reauthenticateWithCredential(currentUser, credential);
-      // User re-authenticated successfully, now update password
       await updatePassword(currentUser, newPassword);
       toast({
         title: "موفقیت",
@@ -166,7 +195,7 @@ export default function ProfilePage() {
     } catch (error: any) {
       console.error("Error changing password:", error);
       let friendlyMessage = "خطایی در تغییر رمز عبور رخ داد. لطفاً دوباره تلاش کنید.";
-      if (error.code === 'auth/wrong-password') {
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         friendlyMessage = "رمز عبور فعلی شما نادرست است.";
       } else if (error.code === 'auth/weak-password') {
         friendlyMessage = "رمز عبور جدید ضعیف است. لطفاً رمز قوی‌تری انتخاب کنید.";
@@ -182,6 +211,60 @@ export default function ProfilePage() {
     } finally {
       setIsChangingPassword(false);
     }
+  };
+
+  const handleAddressFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setCurrentAddressForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleOpenAddAddressDialog = () => {
+    setEditingAddress(null);
+    setCurrentAddressForm({ recipientName: '', street: '', city: '', postalCode: '', phoneNumber: '' });
+    setIsAddressDialogOpen(true);
+  };
+
+  const handleOpenEditAddressDialog = (address: Address) => {
+    setEditingAddress(address);
+    setCurrentAddressForm({
+      recipientName: address.recipientName,
+      street: address.street,
+      city: address.city,
+      postalCode: address.postalCode,
+      phoneNumber: address.phoneNumber,
+    });
+    setIsAddressDialogOpen(true);
+  };
+
+  const handleSaveAddress = () => {
+    // Basic validation (can be expanded with Zod)
+    if (!currentAddressForm.recipientName || !currentAddressForm.street || !currentAddressForm.city || !currentAddressForm.postalCode || !currentAddressForm.phoneNumber) {
+      toast({ title: "خطا", description: "لطفاً تمام فیلدهای آدرس را پر کنید.", variant: "destructive" });
+      return;
+    }
+
+    if (editingAddress) {
+      setAddresses(prev => prev.map(addr => addr.id === editingAddress.id ? { ...editingAddress, ...currentAddressForm } : addr));
+      toast({ title: "آدرس به‌روزرسانی شد", description: "تغییرات آدرس شما (به صورت نمایشی) ذخیره شد." });
+    } else {
+      const newAddress: Address = { id: `addr${Date.now()}`, ...currentAddressForm };
+      setAddresses(prev => [...prev, newAddress]);
+      toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما (به صورت نمایشی) اضافه شد." });
+    }
+    setIsAddressDialogOpen(false);
+    // In a real app, here you would call an API to save to Firestore.
+  };
+
+  const handleDeleteAddress = (addressId: string) => {
+    setAddresses(prev => prev.filter(addr => addr.id !== addressId));
+    toast({ title: "آدرس حذف شد", description: "آدرس مورد نظر (به صورت نمایشی) حذف شد." });
+    // In a real app, here you would call an API to delete from Firestore.
+  };
+
+  const handleSetDefaultAddress = (addressId: string) => {
+    setAddresses(prev => prev.map(addr => ({ ...addr, isDefault: addr.id === addressId })));
+    toast({ title: "آدرس پیش‌فرض تنظیم شد", description: "آدرس مورد نظر (به صورت نمایشی) به عنوان پیش‌فرض تنظیم شد." });
+     // In a real app, save this change to Firestore.
   };
 
 
@@ -307,6 +390,59 @@ export default function ProfilePage() {
             </Card>
 
             <Card className="shadow-lg">
+              <CardHeader className="flex flex-row items-center justify-between">
+                 <div className="flex items-center gap-3">
+                    <MapPin className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-2xl">مدیریت آدرس‌ها</CardTitle>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleOpenAddAddressDialog}>
+                    <PlusCircle className="ml-2 h-4 w-4 rtl:mr-2 rtl:ml-0" /> افزودن آدرس جدید
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <Alert variant="default" className="mb-4 bg-yellow-50 border-yellow-200 text-yellow-800">
+                    <Info className="h-5 w-5 !text-yellow-700" />
+                    <AlertTitle className="font-semibold">توجه: مدیریت آدرس نمایشی</AlertTitle>
+                    <AlertDescription>
+                        آدرس‌های نمایش داده شده و عملیات افزودن، ویرایش و حذف در این بخش به صورت نمایشی هستند و به پایگاه داده واقعی متصل نمی‌باشند. تغییرات پس از رفرش صفحه از بین خواهند رفت.
+                    </AlertDescription>
+                </Alert>
+                {addresses.length > 0 ? (
+                    <div className="space-y-4">
+                        {addresses.map(addr => (
+                            <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-primary shadow-md' : 'shadow-sm'}`}>
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold text-foreground">{addr.recipientName} {addr.isDefault && <Badge variant="secondary" className="ml-2 rtl:mr-2 text-xs">پیش‌فرض</Badge>}</p>
+                                        <p className="text-sm text-muted-foreground">{addr.street}, {addr.city}</p>
+                                        <p className="text-sm text-muted-foreground">کدپستی: {addr.postalCode} - تلفن: {addr.phoneNumber}</p>
+                                    </div>
+                                    <div className="flex gap-1 flex-shrink-0">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditAddressDialog(addr)}>
+                                            <Edit3 className="h-4 w-4" />
+                                            <span className="sr-only">ویرایش آدرس</span>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteAddress(addr.id)} disabled={addr.isDefault}>
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">حذف آدرس</span>
+                                        </Button>
+                                    </div>
+                                </div>
+                                {!addr.isDefault && (
+                                    <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs" onClick={() => handleSetDefaultAddress(addr.id)}>
+                                        تنظیم به عنوان آدرس پیش‌فرض
+                                    </Button>
+                                )}
+                            </Card>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-muted-foreground text-center py-4">هنوز آدرسی ثبت نکرده‌اید.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
               <CardHeader className="flex items-center gap-3">
                 <ShoppingBag className="h-6 w-6 text-primary" />
                 <CardTitle className="text-2xl">تاریخچه سفارش‌ها</CardTitle>
@@ -400,7 +536,7 @@ export default function ProfilePage() {
                         className="pr-10"
                         required
                       />
-                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowCurrentPass(!showCurrentPass)}>
+                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowCurrentPass(!showCurrentPass)} aria-label="نمایش/مخفی کردن رمز عبور فعلی">
                         {showCurrentPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -415,7 +551,7 @@ export default function ProfilePage() {
                         className="pr-10"
                         required
                       />
-                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowNewPass(!showNewPass)}>
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowNewPass(!showNewPass)} aria-label="نمایش/مخفی کردن رمز عبور جدید">
                         {showNewPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -430,7 +566,7 @@ export default function ProfilePage() {
                         className="pr-10"
                         required
                       />
-                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPass(!showConfirmPass)}>
+                       <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-7 h-7 w-7 text-muted-foreground" onClick={() => setShowConfirmPass(!showConfirmPass)} aria-label="نمایش/مخفی کردن تکرار رمز عبور جدید">
                         {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -454,10 +590,6 @@ export default function ProfilePage() {
                     </div>
                   </form>
                 )}
-                <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
-                  <Settings className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
-                  مدیریت آدرس‌ها (به زودی)
-                </Button>
                 <Button variant="outline" className="w-full justify-start text-base py-3 h-auto" disabled>
                   <User className="ml-3 h-5 w-5 rtl:mr-3 rtl:ml-0" />
                   تنظیمات حریم خصوصی (به زودی)
@@ -526,7 +658,49 @@ export default function ProfilePage() {
         </DialogContent>
       </Dialog>
 
+      {/* Address Management Dialog */}
+       <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingAddress ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}</DialogTitle>
+            <DialogDescription>
+              {editingAddress ? 'اطلاعات آدرس خود را ویرایش کنید.' : 'یک آدرس جدید برای ارسال سفارش‌ها وارد کنید.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="recipientName" className="text-right col-span-1">نام گیرنده</Label>
+              <Input id="recipientName" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="street" className="text-right col-span-1">آدرس پستی</Label>
+              <Textarea id="street" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="city" className="text-right col-span-1">شهر</Label>
+              <Input id="city" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="postalCode" className="text-right col-span-1">کد پستی</Label>
+              <Input id="postalCode" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+            </div>
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="addressPhoneNumber" className="text-right col-span-1">شماره تماس</Label>
+              <Input id="addressPhoneNumber" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsAddressDialogOpen(false)}>لغو</Button>
+            <Button type="button" onClick={handleSaveAddress}>ذخیره آدرس</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       <Footer />
     </div>
   );
 }
+
+
+    
