@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, UserCircle } from 'lucide-react';
+import { LogIn, UserPlus, UserCircle, LogOut } from 'lucide-react'; // LogOut وارد شد
 import { SheetClose } from '@/components/ui/sheet';
 
 interface AuthButtonsProps {
@@ -16,22 +16,79 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
   const isAuthenticated = true; // Replace with actual auth check in a real app
 
   if (isAuthenticated) {
-    const ProfileLinkContent = (
-        <>
-            <UserCircle className={inSheet || (isMobile && !inSheet) ? "ml-2 rtl:mr-2 rtl:ml-0" : "ml-2 rtl:mr-2 rtl:ml-0"} />
-            {(!isMobile || inSheet) && 'پروفایل من'}
-        </>
-    );
-    
-    const profileButton = (
-         <Button variant={inSheet ? "ghost" : "outline"} asChild className={inSheet ? "w-full justify-start text-base py-2.5" : (isMobile ? "px-2" : "") }>
+    if (isMobile && !inSheet) { // Mobile header: Two icon buttons
+      return (
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" asChild aria-label="پروفایل من">
             <Link href="/profile">
-                {ProfileLinkContent}
+              <UserCircle className="h-6 w-6" />
             </Link>
+          </Button>
+          <Button variant="ghost" size="icon" asChild aria-label="خروج" className="text-destructive hover:text-destructive focus:text-destructive">
+            <Link href="/auth/login"> {/* Redirect to login on logout */}
+              <LogOut className="h-6 w-6" />
+            </Link>
+          </Button>
+        </div>
+      );
+    } else { // Desktop header OR inSheet (mobile menu)
+      // Profile Button
+      const ProfileLinkContent = (
+        <>
+          <UserCircle className="ml-2 rtl:mr-2 rtl:ml-0" />
+          {'پروفایل من'}
+        </>
+      );
+      const profileButton = (
+        <Button 
+          variant={inSheet ? "ghost" : "outline"} 
+          asChild 
+          className={inSheet ? "w-full justify-start text-base py-2.5" : ""}
+        >
+          <Link href="/profile">
+            {ProfileLinkContent}
+          </Link>
         </Button>
-    );
-    
-    return inSheet ? <SheetClose asChild>{profileButton}</SheetClose> : profileButton;
+      );
+
+      // Logout Button
+      const LogoutLinkContent = (
+        <>
+          <LogOut className="ml-2 rtl:mr-2 rtl:ml-0" />
+          {'خروج'}
+        </>
+      );
+      const logoutButton = (
+        <Button 
+          variant={inSheet ? "ghost" : "outline"} 
+          asChild 
+          className={
+            inSheet ? "w-full justify-start text-base py-2.5 text-destructive hover:text-destructive focus:text-destructive" : 
+            "text-destructive hover:text-destructive border-destructive hover:bg-destructive/10 focus:text-destructive"
+          }
+        >
+          <Link href="/auth/login"> {/* Redirect to login on logout */}
+            {LogoutLinkContent}
+          </Link>
+        </Button>
+      );
+
+      if (inSheet) {
+        return (
+          <>
+            <SheetClose asChild>{profileButton}</SheetClose>
+            <SheetClose asChild>{logoutButton}</SheetClose>
+          </>
+        );
+      } else { // Desktop header
+        return (
+          <div className="flex items-center gap-1 md:gap-2">
+            {profileButton}
+            {logoutButton}
+          </div>
+        );
+      }
+    }
   }
 
   // Logic for non-authenticated users
