@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -11,11 +12,10 @@ interface AuthButtonsProps {
 }
 
 export default function AuthButtons({ inSheet = false, isMobile = false }: AuthButtonsProps) {
-  // Placeholder for authentication state
-  const isAuthenticated = false; // Replace with actual auth check
+  // Placeholder for authentication state - SET TO TRUE FOR PROFILE PAGE DEMO
+  const isAuthenticated = true; // Replace with actual auth check in a real app
 
   if (isAuthenticated) {
-    // If in sheet, wrap with SheetClose for navigation
     const ProfileLinkContent = (
         <>
             <UserCircle className={inSheet || (isMobile && !inSheet) ? "ml-2 rtl:mr-2 rtl:ml-0" : "ml-2 rtl:mr-2 rtl:ml-0"} />
