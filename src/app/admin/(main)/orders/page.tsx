@@ -1,4 +1,6 @@
 
+'use client'; // Added to make this a Client Component
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button'; // Added Button import
 import { PackageSearch, Loader2 } from 'lucide-react';
@@ -8,6 +10,7 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy, Timestamp as FirestoreTimestamp } from 'firebase/firestore';
 import type { OrderDocument } from '@/types/firestore';
 import Link from 'next/link';
+import { useEffect, useState } from 'react'; // Import useEffect and useState for client-side data fetching
 
 async function getOrdersFromFirestore(): Promise<OrderDocument[]> {
   const ordersCol = collection(db, 'orders');
@@ -44,21 +47,44 @@ const formatOrderPrice = (price: number): string => {
   return `${price.toLocaleString('fa-IR')} تومان`;
 };
 
-export default async function AdminOrdersPage() {
-  let orders: OrderDocument[] = [];
-  let fetchError = null;
+export default function AdminOrdersPage() {
+  const [orders, setOrders] = useState<OrderDocument[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  try {
-    orders = await getOrdersFromFirestore();
-  } catch (error: any) {
-    console.error("Error fetching orders for admin page:", error);
-    if (error.message && error.message.includes("indexes?create_composite")) {
-        fetchError = "ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً با استفاده از لینک ارائه شده در کنسول Firebase (هنگام بروز این خطا در صفحه پروفایل کاربر) ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.";
-    } else {
-        fetchError = "خطا در بارگذاری سفارش‌ها از پایگاه داده.";
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true);
+      setFetchError(null);
+      try {
+        const fetchedOrders = await getOrdersFromFirestore();
+        setOrders(fetchedOrders);
+      } catch (error: any) {
+        console.error("Error fetching orders for admin page:", error);
+        if (error.message && error.message.includes("indexes?create_composite")) {
+            setFetchError("ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً با استفاده از لینک ارائه شده در کنسول Firebase (هنگام بروز این خطا در صفحه پروفایل کاربر) ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.");
+        } else if (error.message && error.message.includes("permission-denied") || error.message && error.message.includes("insufficient permissions")) {
+            setFetchError("شما مجوز کافی برای دسترسی به این اطلاعات را ندارید. لطفاً با مدیر سیستم تماس بگیرید یا از صحت قوانین امنیتی Firestore اطمینان حاصل کنید.");
+        }
+         else {
+            setFetchError("خطا در بارگذاری سفارش‌ها از پایگاه داده.");
+        }
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }
+    fetchData();
+  }, []);
 
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 rtl:mr-2">در حال بارگذاری سفارش‌ها...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -73,7 +99,7 @@ export default async function AdminOrdersPage() {
                 <CardHeader>
                 <PackageSearch className="mx-auto h-16 w-16 text-destructive mb-4" />
                 <CardTitle className="text-xl text-destructive">خطا در بارگذاری سفارش‌ها</CardTitle>
-                <CardDescription className="text-muted-foreground px-4">
+                <CardDescription className="text-muted-foreground px-4 whitespace-pre-line">
                     {fetchError}
                 </CardDescription>
                 </CardHeader>
