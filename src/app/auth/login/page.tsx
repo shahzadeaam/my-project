@@ -22,7 +22,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null); // Changed to React.ReactNode
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -40,18 +40,47 @@ export default function LoginPage() {
       });
       router.push('/'); // Redirect to home page on successful login
     } catch (err: any) {
-      let friendlyMessage = 'ایمیل یا رمز عبور نامعتبر است. لطفا دوباره تلاش کنید.';
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        friendlyMessage = 'ایمیل یا رمز عبور وارد شده صحیح نمی‌باشد.';
-      } else if (err.code === 'auth/invalid-email') {
-        friendlyMessage = 'فرمت ایمیل وارد شده صحیح نمی‌باشد.';
-      } else if (err.code === 'auth/too-many-requests') {
-        friendlyMessage = 'دسترسی به این حساب به دلیل تلاش‌های زیاد برای ورود، موقتاً مسدود شده است. لطفاً بعداً دوباره امتحان کنید یا رمز عبور خود را بازنشانی کنید.';  
+      let friendlyMessage: React.ReactNode = 'ایمیل یا رمز عبور نامعتبر است. لطفا دوباره تلاش کنید.';
+      
+      switch (err.code) {
+        case 'auth/user-not-found':
+        case 'auth/invalid-email': // This can also mean the email format is wrong, but often implies user not found
+          friendlyMessage = (
+            <>
+              کاربری با این آدرس ایمیل یافت نشد. آیا می‌خواهید{' '}
+              <Link href="/auth/signup" className="font-semibold text-primary hover:underline">
+                ثبت نام کنید
+              </Link>
+              ؟
+            </>
+          );
+          break;
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential': // Generic error for bad email/password combination
+          friendlyMessage = (
+            <>
+              رمز عبور وارد شده صحیح نمی‌باشد. آیا رمز خود را{' '}
+              <Link href="/auth/reset-password" className="font-semibold text-primary hover:underline">
+                فراموش کرده‌اید
+              </Link>
+              ؟
+            </>
+          );
+          break;
+        case 'auth/too-many-requests':
+          friendlyMessage = 'دسترسی به این حساب به دلیل تلاش‌های زیاد برای ورود، موقتاً مسدود شده است. لطفاً بعداً دوباره امتحان کنید یا رمز عبور خود را بازنشانی کنید.';
+          break;
+        default:
+          // Keep the generic message for other unhandled Firebase errors or network issues
+          friendlyMessage = 'خطایی در هنگام ورود رخ داد. لطفا دوباره تلاش کنید.';
+          break;
       }
+      
       setError(friendlyMessage);
+      // Toast can show a simpler message or be omitted if the Alert is prominent enough
       toast({
         title: 'خطا در ورود',
-        description: friendlyMessage,
+        description: typeof friendlyMessage === 'string' ? friendlyMessage : 'لطفا پیام خطا در فرم را بررسی کنید.',
         variant: 'destructive',
       });
       console.error('Firebase Login Error:', err);
