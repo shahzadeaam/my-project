@@ -1,6 +1,4 @@
 
-// This file is no longer needed as orders are fetched from Firestore.
-// You can delete this file.
-// Keeping it empty for now to avoid breaking existing imports if any were missed,
-// but it should be removed in a cleanup step.
+// این فایل دیگر استفاده نمی‌شود. سفارش‌ها از Firestore خوانده می‌شوند.
+// می‌توانید این فایل را با اطمینان حذف کنید.
 export {};

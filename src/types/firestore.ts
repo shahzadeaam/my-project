@@ -1,71 +1,72 @@
 
 import type { Timestamp } from 'firebase/firestore';
 
-// Used for product listings and cart context
+// محصولات
 export interface Product {
   id: string; // Firestore document ID
   name: string;
-  price: number; // Store price as number
+  price: number; // قیمت به صورت عددی ذخیره شود
   description: string;
   imageUrl: string;
-  imageHint: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  imageHint: string; // برای جستجوی تصویر جایگزین
+  createdAt?: Timestamp; // زمان ایجاد محصول
+  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی
 }
 
-// For user profile document in Firestore
+// پروفایل کاربر در کالکشن users
 export interface UserProfileDocument {
-  uid: string;
+  uid: string; // شناسه کاربر از Firebase Authentication
   fullName: string;
-  email: string;
-  phoneNumber?: string;
+  email: string; // ایمیل کاربر، همگام با Firebase Auth
+  phoneNumber?: string; // شماره تماس (اختیاری)
   privacySettings?: {
-    showPublicProfile?: boolean;
-    receiveNewsletter?: boolean;
-    shareActivity?: boolean;
+    showPublicProfile?: boolean; // آیا پروفایل عمومی نمایش داده شود (برای آینده)
+    receiveNewsletter?: boolean; // آیا خبرنامه دریافت کند
+    shareActivity?: boolean; // برای آینده، اشتراک فعالیت خرید
   };
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: Timestamp; // زمان ایجاد پروفایل
+  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی پروفایل
 }
 
-// For user addresses subcollection in Firestore
+// آدرس‌های کاربر (به عنوان زیرکالکشن در داکیومنت کاربر)
 export interface Address {
-  id: string; // Firestore document ID
-  recipientName: string;
-  street: string;
-  city: string;
-  postalCode: string;
-  phoneNumber: string;
-  isDefault?: boolean;
-  createdAt?: Timestamp;
+  id: string; // Firestore document ID برای آدرس
+  recipientName: string; // نام گیرنده
+  street: string; // خیابان، کوچه، پلاک
+  city: string; // شهر
+  postalCode: string; // کد پستی
+  phoneNumber: string; // شماره تماس برای این آدرس
+  isDefault?: boolean; // آیا آدرس پیش‌فرض است
+  createdAt?: Timestamp; // زمان ایجاد آدرس
+  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی آدرس
 }
 
-// For items within an order
+// آیتم‌های موجود در یک سفارش
 export interface OrderItem {
-  productId: string;
-  name: string;
-  price: number; // Price per unit at the time of order
-  quantity: number;
-  imageUrl?: string;
+  productId: string; // شناسه محصول
+  name: string; // نام محصول در زمان سفارش
+  price: number; // قیمت واحد محصول در زمان سفارش
+  quantity: number; // تعداد سفارش داده شده
+  imageUrl?: string; // URL تصویر محصول در زمان سفارش
 }
 
-// For orders collection in Firestore
+// سفارش‌ها در کالکشن orders
 export interface OrderDocument {
-  id: string; // Firestore document ID
-  userId: string;
-  items: OrderItem[];
-  totalAmount: number;
-  status: 'در حال پردازش' | 'ارسال شده' | 'تحویل داده شده' | 'لغو شده';
-  customerInfo: {
+  id: string; // Firestore document ID برای سفارش
+  userId: string; // UID کاربری که سفارش را ثبت کرده
+  items: OrderItem[]; // لیست محصولات سفارش داده شده
+  totalAmount: number; // مبلغ کل سفارش
+  status: 'در حال پردازش' | 'ارسال شده' | 'تحویل داده شده' | 'لغو شده'; // وضعیت سفارش
+  customerInfo: { // اطلاعات مشتری که در فرم پرداخت وارد شده
     fullName: string;
     email: string;
     phoneNumber: string;
   };
-  shippingAddress?: Address; // Can be a copy of one of the user's addresses
-  paymentDetails?: { // For simulated payment
-    orderId: string; // Mock order ID from payment simulation
-    gateway?: string; // e.g., "Simulated Gateway"
+  shippingAddress?: Address; // آدرس ارسال سفارش (می‌تواند کپی از آدرس کاربر یا آدرس جدید باشد)
+  paymentDetails?: { // جزئیات پرداخت شبیه‌سازی شده
+    orderId: string; // شناسه سفارش از درگاه پرداخت (نمایشی)
+    gateway?: string; // نام درگاه (نمایشی)
   };
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt: Timestamp; // زمان ثبت سفارش
+  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی وضعیت سفارش
 }
