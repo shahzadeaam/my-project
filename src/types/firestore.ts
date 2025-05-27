@@ -19,6 +19,7 @@ export interface UserProfileDocument {
   fullName: string;
   email: string; // ایمیل کاربر، همگام با Firebase Auth
   phoneNumber?: string; // شماره تماس (اختیاری)
+  role?: 'customer' | 'admin'; // نقش کاربر
   privacySettings?: {
     showPublicProfile?: boolean; // آیا پروفایل عمومی نمایش داده شود (برای آینده)
     receiveNewsletter?: boolean; // آیا خبرنامه دریافت کند

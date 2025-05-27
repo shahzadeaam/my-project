@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, UserCircle, LogOut, Loader2 } from 'lucide-react';
+import { LogIn, UserPlus, UserCircle, LogOut, Loader2, LayoutDashboard } from 'lucide-react'; // Added LayoutDashboard
 import { SheetClose } from '@/components/ui/sheet';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -15,14 +15,14 @@ interface AuthButtonsProps {
 }
 
 export default function AuthButtons({ inSheet = false, isMobile = false }: AuthButtonsProps) {
-  const { currentUser, loading: authLoading, logout } = useAuth();
+  const { currentUser, userDocument, loading: authLoading, logout } = useAuth();
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      await logout(); // This will also redirect via AuthContext
+      await logout(); 
       toast({
         title: 'خروج موفق',
         description: 'شما با موفقیت از حساب کاربری خود خارج شدید.',
@@ -41,21 +41,39 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
   };
 
   if (authLoading) {
-    // Show a simple placeholder or spinner while auth state is loading
     return (
       <div className={`flex items-center gap-1 md:gap-2 ${inSheet ? "flex-col space-y-1" : ""}`}>
-        <Button variant={inSheet ? "ghost" : "outline"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : ""}>
+        <Button variant={inSheet ? "ghost" : "outline"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : "h-9 w-24"}>
           <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" />
           {inSheet ? "بارگذاری..." : ""}
         </Button>
         {!inSheet &&
-          <Button variant={inSheet ? "ghost" : "default"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : ""}>
+          <Button variant={inSheet ? "ghost" : "default"} disabled className={inSheet ? "w-full justify-start text-base py-2.5" : "h-9 w-24"}>
             <Loader2 className="ml-2 h-4 w-4 animate-spin rtl:mr-2 rtl:ml-0" />
           </Button>
         }
       </div>
     );
   }
+
+  const isAdmin = currentUser && userDocument?.role === 'admin';
+
+  // Admin Dashboard Button
+  const AdminDashboardButton = isAdmin ? (
+    <Button 
+      asChild 
+      variant={inSheet || isMobile ? "ghost" : "outline"} 
+      className={`${inSheet ? "w-full justify-start text-base py-2.5" : ""} ${isMobile && !inSheet ? "hidden" : ""}`} // Hide on mobile header icons for now
+    >
+      <Link href="/admin/dashboard">
+        <LayoutDashboard className="ml-2 rtl:mr-2 rtl:ml-0" />
+        داشبورد
+      </Link>
+    </Button>
+  ) : null;
+  
+  const AdminDashboardButtonInSheet = isAdmin ? <SheetClose asChild>{AdminDashboardButton}</SheetClose> : null;
+
 
   if (currentUser) { // User is authenticated
     // Profile Button
@@ -114,10 +132,11 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
           {logoutButton}
         </div>
       );
-    } else { // Desktop header OR inSheet (mobile menu)
-       if (inSheet) {
+    } else { 
+       if (inSheet) { // Mobile Sheet Menu
         return (
           <>
+            {AdminDashboardButtonInSheet}
             <SheetClose asChild>{profileButton}</SheetClose>
             {logoutButton}
           </>
@@ -125,6 +144,7 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
       } else { // Desktop header
         return (
           <div className="flex items-center gap-1 md:gap-2">
+            {AdminDashboardButton}
             {profileButton}
             {logoutButton}
           </div>
@@ -134,7 +154,7 @@ export default function AuthButtons({ inSheet = false, isMobile = false }: AuthB
   }
 
   // Logic for non-authenticated users (currentUser is null)
-  if (isMobile && !inSheet) { // Only icon for mobile header (not in sheet)
+  if (isMobile && !inSheet) { 
     return (
          <Button asChild variant="ghost" size="icon" aria-label="ورود یا ثبت نام">
             <Link href="/auth/login">
