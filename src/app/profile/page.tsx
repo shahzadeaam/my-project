@@ -18,7 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
+  // DialogDescription, // حذف شد چون باعث مشکل hydration می‌شد
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -34,7 +34,6 @@ import { Switch } from '@/components/ui/switch';
 import type { UserProfileDocument, Address, OrderDocument, OrderItem } from '@/types/firestore';
 
 const DEFAULT_ORDER_ITEM_IMAGE_PROFILE = "https://placehold.co/64x64.png";
-const DEFAULT_ADDRESS_IMAGE_HINT = "address location"; // Added for address section if needed
 
 export default function ProfilePage() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -47,7 +46,7 @@ export default function ProfilePage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDocument | null>(null);
   const [userOrders, setUserOrders] = useState<OrderDocument[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [ordersFetchError, setOrdersFetchError] = useState<string | null>(null);
+  const [ordersFetchError, setOrdersFetchError] = useState<React.ReactNode | string | null>(null);
 
 
   const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
@@ -91,12 +90,12 @@ export default function ProfilePage() {
           setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
           setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
         } else {
-          // If profile doesn't exist, create it (this might have been handled in signup, but good to have a fallback)
           const newProfileData: UserProfileDocument = {
             uid: currentUser.uid,
             email: currentUser.email || '',
             fullName: currentUser.displayName || 'کاربر جدید',
             phoneNumber: '',
+            role: 'customer',
             privacySettings: { showPublicProfile: false, receiveNewsletter: true, shareActivity: false },
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now()
@@ -115,8 +114,10 @@ export default function ProfilePage() {
         setProfile(null);
       }
     };
-    if (!authLoading) {
+    if (!authLoading && currentUser) { // Fetch profile only if user is loaded and present
       fetchUserProfile();
+    } else if (!authLoading && !currentUser) { // Clear profile if user logs out
+      setProfile(null);
     }
   }, [currentUser, authLoading, toast]);
 
@@ -170,15 +171,15 @@ export default function ProfilePage() {
             const firestoreConsoleLink = error.message.substring(error.message.indexOf('https://console.firebase.google.com'));
             const errorMessage = (
                 <>
-                    ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً 
+                    ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً{' '}
                     <a href={firestoreConsoleLink} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
                         با استفاده از این لینک در کنسول Firebase
                     </a>
-                    ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.
+                    {' '}ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.
                 </>
             );
-            setOrdersFetchError(errorMessage as unknown as string); // Cast to string for state, render as JSX
-            toast({ title: "خطای پایگاه داده", description: errorMessage, variant: "destructive", duration: 15000 });
+            setOrdersFetchError(errorMessage); 
+            toast({ title: "خطای پایگاه داده", description: errorMessage as React.ReactNode, variant: "destructive", duration: 15000 });
         } else {
             const genericError = "مشکلی در بارگذاری سفارش‌ها پیش آمد.";
             setOrdersFetchError(genericError);
@@ -206,34 +207,41 @@ export default function ProfilePage() {
     }
     
     const userDocRef = doc(db, 'users', currentUser.uid);
-    const updates: Partial<UserProfileDocument> = { updatedAt: Timestamp.now() };
-    let authProfileUpdated = false;
+    const firestoreUpdates: Partial<UserProfileDocument> = { updatedAt: Timestamp.now() };
+    let authProfileNeedsUpdate = false;
 
     if (tempProfileData.fullName !== (profile.fullName || currentUser.displayName)) {
-      updates.fullName = tempProfileData.fullName;
-      if (auth.currentUser && auth.currentUser.displayName !== tempProfileData.fullName) {
-        try {
-          await updateFirebaseProfile(auth.currentUser, { displayName: tempProfileData.fullName });
-          authProfileUpdated = true;
-        } catch (error) {
-           console.error("Error updating Firebase Auth displayName:", error);
-           toast({ title: "خطا", description: "مشکلی در به‌روزرسانی نام در سیستم احراز هویت رخ داد.", variant: "destructive" });
-        }
-      }
+      firestoreUpdates.fullName = tempProfileData.fullName;
+      authProfileNeedsUpdate = true;
     }
     if (tempProfileData.phoneNumber !== profile.phoneNumber) {
-      updates.phoneNumber = tempProfileData.phoneNumber;
+      firestoreUpdates.phoneNumber = tempProfileData.phoneNumber;
     }
 
     try {
-      await updateDoc(userDocRef, updates);
+      // Update Firebase Auth displayName if changed
+      if (authProfileNeedsUpdate && auth.currentUser && auth.currentUser.displayName !== tempProfileData.fullName) {
+        await updateFirebaseProfile(auth.currentUser, { displayName: tempProfileData.fullName });
+      }
       
-      setProfile(prev => prev ? ({ ...prev, ...updates, fullName: updates.fullName ?? prev.fullName, phoneNumber: updates.phoneNumber ?? prev.phoneNumber }) : null);
+      // Update Firestore document
+      if (Object.keys(firestoreUpdates).length > 1) { // More than just updatedAt
+          await updateDoc(userDocRef, firestoreUpdates);
+      }
+      
+      // Optimistically update local profile state
+      setProfile(prev => prev ? ({ 
+          ...prev, 
+          fullName: firestoreUpdates.fullName ?? prev.fullName, 
+          phoneNumber: firestoreUpdates.phoneNumber ?? prev.phoneNumber,
+          updatedAt: Timestamp.now() // Reflect update time locally
+        }) : null);
+
       setIsEditingInfo(false);
       toast({ title: "اطلاعات ذخیره شد", description: "اطلاعات پروفایل شما با موفقیت به‌روزرسانی شد." });
     } catch (error) {
-      console.error("Error updating profile in Firestore:", error);
-      toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل در پایگاه داده رخ داد.", variant: "destructive" });
+      console.error("Error updating profile:", error);
+      toast({ title: "خطا در ذخیره‌سازی", description: "مشکلی در به‌روزرسانی پروفایل رخ داد.", variant: "destructive" });
     }
   };
   
@@ -241,11 +249,10 @@ export default function ProfilePage() {
     if (!currentUser || !profile) return;
 
     const newPrivacySettings = {
-      ...privacySettings,
+      ...(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false }), // Ensure base object exists
       [key]: value,
     };
-    setPrivacySettings(newPrivacySettings); 
-
+    
     setIsSavingPrivacy(true);
     try {
       const userDocRef = doc(db, 'users', currentUser.uid);
@@ -254,10 +261,13 @@ export default function ProfilePage() {
         updatedAt: Timestamp.now(),
       });
       setProfile(prev => prev ? ({ ...prev, privacySettings: newPrivacySettings, updatedAt: Timestamp.now() }) : null);
+      // Update local state used by switches immediately
+      setPrivacySettings(newPrivacySettings); 
       toast({ title: "تنظیمات ذخیره شد", description: "تنظیمات حریم خصوصی شما به‌روزرسانی شد." });
     } catch (error) {
       console.error("Error saving privacy settings:", error);
       toast({ title: "خطا", description: "مشکلی در ذخیره تنظیمات حریم خصوصی پیش آمد.", variant: "destructive" });
+      // Revert local state if save fails
       setPrivacySettings(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
     } finally {
       setIsSavingPrivacy(false);
@@ -341,7 +351,7 @@ export default function ProfilePage() {
       return;
     }
     if (!currentAddressForm.recipientName || !currentAddressForm.street || !currentAddressForm.city || !currentAddressForm.postalCode || !currentAddressForm.phoneNumber) {
-      toast({ title: "خطا", description: "لطفاً تمام فیلدهای آدرس را پر کنید.", variant: "destructive" });
+      toast({ title: "خطای ورودی", description: "لطفاً تمام فیلدهای آدرس را پر کنید.", variant: "destructive" });
       return;
     }
 
@@ -374,12 +384,10 @@ export default function ProfilePage() {
       }
       
       // Refetch addresses
-      setIsLoadingAddresses(true);
       const q = query(addressesColRef, orderBy('createdAt', 'desc'));
       const addressSnapshot = await getDocs(q);
       const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
       setAddresses(fetchedAddresses);
-      setIsLoadingAddresses(false);
       
       setIsAddressDialogOpen(false);
     } catch (error) {
@@ -392,17 +400,16 @@ export default function ProfilePage() {
      if (!currentUser) return;
     try {
       const addressToDelete = addresses.find(addr => addr.id === addressId);
-      if (addressToDelete?.isDefault && addresses.length === 1) {
-        toast({ title: "خطا", description: "نمی‌توانید تنها آدرس پیش‌فرض را حذف کنید. ابتدا آدرس دیگری اضافه یا آن را از حالت پیش‌فرض خارج کنید.", variant: "destructive", duration: 7000});
+      if (addressToDelete?.isDefault && addresses.filter(addr => addr.isDefault).length <= 1 && addresses.length > 1) {
+        toast({ title: "خطا", description: "نمی‌توانید تنها آدرس پیش‌فرض را حذف کنید وقتی آدرس‌های دیگری موجود است. ابتدا آدرس دیگری را پیش‌فرض کنید.", variant: "destructive", duration: 7000});
         return;
       }
-
+      
       await deleteDoc(doc(db, 'users', currentUser.uid, 'addresses', addressId));
       toast({ title: "آدرس حذف شد", description: "آدرس مورد نظر با موفقیت حذف شد." });
       
       let newAddresses = addresses.filter(addr => addr.id !== addressId);
       if (addressToDelete?.isDefault && newAddresses.length > 0 && !newAddresses.some(addr => addr.isDefault)) {
-        // If the deleted address was default, and there are other addresses, make the first one default
         const newDefaultAddress = newAddresses[0];
         const addressRef = doc(db, 'users', currentUser.uid, 'addresses', newDefaultAddress.id);
         await updateDoc(addressRef, { isDefault: true });
@@ -443,7 +450,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (authLoading || (!currentUser && !authLoading && profile === undefined) ) {
+  if (authLoading || (!currentUser && profile === undefined && !authLoading)) { // Updated loading condition
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -494,7 +501,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="md:col-span-3 space-y-8"> {/* Changed from md:col-span-2 to md:col-span-3 for full width */}
+          <div className="md:col-span-3 space-y-8">
             {/* Personal Info Card */}
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -531,7 +538,7 @@ export default function ProfilePage() {
                     <div>
                       <Label htmlFor="phoneNumberEdit">شماره تماس</Label>
                       <Input id="phoneNumberEdit" name="phoneNumber" type="tel" value={tempProfileData.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" />
-                       <p className="text-xs text-muted-foreground mt-1">توجه: ذخیره شماره تماس در حال حاضر فقط نمایشی است و به صورت دائمی ذخیره نمی‌شود.</p>
+                       <p className="text-xs text-muted-foreground mt-1">این شماره تماس در پایگاه داده ذخیره خواهد شد.</p>
                     </div>
                   </>
                 ) : (
@@ -576,7 +583,7 @@ export default function ProfilePage() {
                             <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-2 border-primary shadow-md bg-primary/5' : 'shadow-sm'}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex-grow">
-                                      <div className="flex items-center mb-1">
+                                      <div className="flex items-center mb-1"> {/* Wrapper for name and badge */}
                                         <span className="font-semibold text-foreground">{addr.recipientName}</span>
                                         {addr.isDefault && <Badge variant="secondary" className="mr-2 rtl:ml-2 rtl:mr-0 text-xs bg-primary/20 text-primary border-primary/30">پیش‌فرض</Badge>}
                                       </div>
@@ -624,51 +631,64 @@ export default function ProfilePage() {
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>خطا در بارگذاری سفارش‌ها</AlertTitle>
-                        <AlertDescription>{ordersFetchError}</AlertDescription>
+                        <AlertDescription>{typeof ordersFetchError === 'string' ? ordersFetchError : 'لطفا برای مشاهده جزئیات خطا، کنسول را بررسی کنید یا با پشتیبانی تماس بگیرید.'}</AlertDescription>
                     </Alert>
                 ) : userOrders.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>شناسه سفارش</TableHead>
-                        <TableHead className="hidden sm:table-cell">تاریخ</TableHead>
-                        <TableHead>مبلغ کل</TableHead>
-                        <TableHead>وضعیت</TableHead>
-                        <TableHead className="text-left">جزئیات</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {userOrders.map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-mono text-xs">{order.paymentDetails?.orderId || order.id}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{(order.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'}</TableCell>
-                          <TableCell>{formatOrderPrice(order.totalAmount)}</TableCell>
-                          <TableCell>
-                            <Badge variant={getOrderStatusBadgeVariant(order.status)}
-                              className={
-                                order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
-                                order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
-                                order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
-                                order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
-                              }
-                            >
-                              {order.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-left">
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
-                              <Eye className="h-4 w-4" />
-                              <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
-                            </Button>
-                          </TableCell>
+                  <div className="relative w-full overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>شناسه سفارش</TableHead>
+                          <TableHead className="hidden sm:table-cell">تاریخ</TableHead>
+                          <TableHead>مبلغ کل</TableHead>
+                          <TableHead>وضعیت</TableHead>
+                          <TableHead className="text-left">جزئیات</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {userOrders.map((order) => (
+                          <TableRow key={order.id}>
+                            <TableCell className="font-mono text-xs">{order.paymentDetails?.orderId || order.id}</TableCell>
+                            <TableCell className="hidden sm:table-cell">{(order.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'}</TableCell>
+                            <TableCell>{formatOrderPrice(order.totalAmount)}</TableCell>
+                            <TableCell>
+                              <Badge variant={getOrderStatusBadgeVariant(order.status)}
+                                className={
+                                  order.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                                  order.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                  order.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                                  order.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                                }
+                              >
+                                {order.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-left">
+                              <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
+                                <Eye className="h-4 w-4" />
+                                <span className="sr-only sm:not-sr-only sm:ml-1 rtl:sm:mr-1">مشاهده</span>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 ) : (
                   <p className="text-muted-foreground text-center py-4">شما تاکنون هیچ سفارشی ثبت نکرده‌اید.</p>
                 )}
               </CardContent>
+               { !isLoadingOrders && !ordersFetchError && (
+                <CardFooter>
+                    <Alert variant="default" className="w-full bg-muted/40">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle className="text-xs font-medium">توجه</AlertTitle>
+                        <AlertDescription className="text-xs">
+                        تاریخچه سفارش‌ها از پایگاه داده واقعی خوانده می‌شود. اگر ایندکس لازم در Firestore ایجاد نشده باشد، با خطا مواجه خواهید شد.
+                        </AlertDescription>
+                    </Alert>
+                </CardFooter>
+              )}
             </Card>
             
             {/* Account Settings Card */}
@@ -741,6 +761,13 @@ export default function ProfilePage() {
                     <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5 pt-3">
+                    <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
+                        <Info className="h-4 w-4 !text-blue-700 dark:!text-blue-300" />
+                        <AlertTitle>توجه</AlertTitle>
+                        <AlertDescription>
+                        تغییرات این بخش در پایگاه داده Firestore ذخیره می‌شود.
+                        </AlertDescription>
+                    </Alert>
                     <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
                         <div>
                             <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label>
@@ -783,11 +810,6 @@ export default function ProfilePage() {
                         />
                     </div>
                 </CardContent>
-                <CardFooter>
-                    <p className="text-xs text-muted-foreground">
-                        تغییرات تنظیمات حریم خصوصی شما در پایگاه داده ذخیره می‌شود.
-                    </p>
-                </CardFooter>
             </Card>
           </div>
         </div>
@@ -800,25 +822,28 @@ export default function ProfilePage() {
             <>
               <DialogHeader>
                 <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle>
-                <DialogDescription>
-                  تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت:
-                  <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)}
-                    className={
-                      selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200 mr-1' :
-                      selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 mr-1' :
-                      selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200 mr-1' :
-                      selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200 mr-1' : 'mr-1'
-                    }
-                  >
-                    {selectedOrder.status}
-                  </Badge>
-                </DialogDescription>
+                 {/* به جای DialogDescription از div استفاده شده برای جلوگیری از خطای hydration */}
+                <div className="text-sm text-muted-foreground pt-1">
+                  <div className="flex items-center gap-1 rtl:gap-2">
+                    <span>تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت:</span>
+                    <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)}
+                      className={
+                        selectedOrder.status === 'تحویل داده شده' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                        selectedOrder.status === 'ارسال شده' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                        selectedOrder.status === 'در حال پردازش' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' :
+                        selectedOrder.status === 'لغو شده' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : ''
+                      }
+                    >
+                      {selectedOrder.status}
+                    </Badge>
+                  </div>
+                </div>
               </DialogHeader>
               <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3">
                 <h4 className="font-semibold mb-2">آیتم‌های سفارش:</h4>
                 {selectedOrder.items.map((item: OrderItem, index: number) => (
                   <div key={item.productId + '-' + index} className="flex items-center gap-3 border-b pb-2">
-                    {(item.imageUrl && item.imageUrl.trim() !== "") ? (
+                    {(item.imageUrl && item.imageUrl.trim() !== "" && item.imageUrl !== DEFAULT_ORDER_ITEM_IMAGE_PROFILE) ? (
                       <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
                         <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} />
                       </div>
@@ -837,6 +862,14 @@ export default function ProfilePage() {
                     <div className="pt-3">
                         <h4 className="font-semibold mb-1">آدرس ارسال:</h4>
                         <p className="text-sm text-muted-foreground">{`${selectedOrder.shippingAddress.recipientName}, ${selectedOrder.shippingAddress.street}, ${selectedOrder.shippingAddress.city}, کدپستی: ${selectedOrder.shippingAddress.postalCode}`}</p>
+                    </div>
+                )}
+                 {selectedOrder.customerInfo && (
+                    <div className="pt-3">
+                        <h4 className="font-semibold mb-1">اطلاعات خریدار:</h4>
+                        <p className="text-sm text-muted-foreground">نام: {selectedOrder.customerInfo.fullName}</p>
+                        <p className="text-sm text-muted-foreground dir-ltr">ایمیل: {selectedOrder.customerInfo.email}</p>
+                        <p className="text-sm text-muted-foreground dir-ltr">تلفن: {selectedOrder.customerInfo.phoneNumber}</p>
                     </div>
                 )}
                 <Separator className="my-3" />
@@ -860,29 +893,30 @@ export default function ProfilePage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingAddress ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}</DialogTitle>
-            <DialogDescription>
+             {/* به جای DialogDescription از div استفاده شده برای جلوگیری از خطای hydration */}
+            <div className="text-sm text-muted-foreground pt-1">
               {editingAddress ? 'اطلاعات آدرس خود را ویرایش کنید.' : 'یک آدرس جدید برای ارسال سفارش‌ها وارد کنید.'}
-            </DialogDescription>
+            </div>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="recipientNameDialog" className="text-right col-span-1">نام گیرنده</Label>
+              <Label htmlFor="recipientNameDialog" className="text-right col-span-1 rtl:text-left">نام گیرنده</Label>
               <Input id="recipientNameDialog" name="recipientName" value={currentAddressForm.recipientName} onChange={handleAddressFormChange} className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="streetDialog" className="text-right col-span-1">آدرس پستی</Label>
+              <Label htmlFor="streetDialog" className="text-right col-span-1 rtl:text-left">آدرس پستی</Label>
               <Textarea id="streetDialog" name="street" value={currentAddressForm.street} onChange={handleAddressFormChange} className="col-span-3" placeholder="خیابان، کوچه، پلاک، واحد" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="cityDialog" className="text-right col-span-1">شهر</Label>
+              <Label htmlFor="cityDialog" className="text-right col-span-1 rtl:text-left">شهر</Label>
               <Input id="cityDialog" name="city" value={currentAddressForm.city} onChange={handleAddressFormChange} className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="postalCodeDialog" className="text-right col-span-1">کد پستی</Label>
+              <Label htmlFor="postalCodeDialog" className="text-right col-span-1 rtl:text-left">کد پستی</Label>
               <Input id="postalCodeDialog" name="postalCode" value={currentAddressForm.postalCode} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="addressPhoneNumberDialog" className="text-right col-span-1">شماره تماس</Label>
+              <Label htmlFor="addressPhoneNumberDialog" className="text-right col-span-1 rtl:text-left">شماره تماس</Label>
               <Input id="addressPhoneNumberDialog" name="phoneNumber" value={currentAddressForm.phoneNumber} onChange={handleAddressFormChange} className="col-span-3" dir="ltr" />
             </div>
           </div>
