@@ -121,8 +121,8 @@ export default function LoginPage() {
                   </Button>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <Link href="#" className="font-medium text-primary hover:underline">
-                  رمز عبور خود را فراموش کرده‌اید؟ (نمایشی)
+                <Link href="/auth/reset-password" className="font-medium text-primary hover:underline">
+                  رمز عبور خود را فراموش کرده‌اید؟
                 </Link>
               </div>
               <Button type="submit" className="w-full h-12 text-base font-semibold mt-4" disabled={isLoading}>
