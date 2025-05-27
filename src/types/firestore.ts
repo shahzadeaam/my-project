@@ -17,9 +17,10 @@ export interface Product {
 export interface UserProfileDocument {
   uid: string; // شناسه کاربر از Firebase Authentication
   fullName: string; // نام و نام خانوادگی
-  email: string; // ایمیل کاربر، همگام با Firebase Auth
+  email: string; // ایمیل کاربر, همگام با Firebase Auth
   phoneNumber?: string; // شماره تماس (اختیاری)
   role?: 'customer' | 'admin'; // نقش کاربر
+  disabled?: boolean; // برای فعال/غیرفعال کردن شبیه‌سازی شده کاربر
   privacySettings?: {
     showPublicProfile?: boolean; // نمایش پروفایل به صورت عمومی
     receiveNewsletter?: boolean; // دریافت خبرنامه و پیشنهادات
