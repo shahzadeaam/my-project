@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'نیلوفر بوتیک',
-  description: 'فروشگاه اینترنتی مدرن و حرفه‌ای نیلوفر بوتیک.',
+  title: 'زومجی',
+  description: 'فروشگاه اینترنتی مدرن و حرفه‌ای زومجی.',
 };
 
 export default function RootLayout({

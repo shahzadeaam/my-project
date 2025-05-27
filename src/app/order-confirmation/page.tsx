@@ -44,7 +44,7 @@ function OrderConfirmationContent() {
             </div>
           </CardContent>
            <CardFooter className="flex justify-center pt-6">
-            <p className="text-xs text-muted-foreground">نیلوفر بوتیک - خرید با اطمینان</p>
+            <p className="text-xs text-muted-foreground">زومجی - خرید با اطمینان</p>
           </CardFooter>
         </Card>
       </main>

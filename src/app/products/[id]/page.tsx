@@ -32,7 +32,7 @@ async function getProduct(id: string): Promise<Product | null> {
     name: data.name || "نام محصول نامشخص",
     price: data.price || 0,
     description: data.description || "توضیحات موجود نیست.",
-    imageUrl: data.imageUrl || "", // Return empty string if undefined/null
+    imageUrl: data.imageUrl || "", 
     imageHint: data.imageHint || "product image",
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -46,11 +46,11 @@ export async function generateMetadata(
   const product = await getProduct(params.id);
   if (!product) {
     return {
-      title: 'محصول یافت نشد - نیلوفر بوتیک',
+      title: 'محصول یافت نشد - زومجی',
     };
   }
   return {
-    title: `${product.name} - نیلوفر بوتیک`,
+    title: `${product.name} - زومجی`,
     description: product.description,
   };
 }
@@ -62,13 +62,14 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
     notFound();
   }
 
-  const cartProduct: Product = {
+  const cartProduct: Product = { // This type is used by AddToCartButton
     id: product.id,
     name: product.name,
-    price: product.price,
+    price: product.price, // price is number
     description: product.description,
     imageUrl: product.imageUrl, 
     imageHint: product.imageHint,
+    // createdAt and updatedAt are not needed for cart item
   };
   
   const displayPrice = product.price.toLocaleString('fa-IR') + ' تومان';
@@ -92,7 +93,6 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
                     data-ai-hint={displayImageHint}
                     className="rounded-lg transition-transform duration-300 hover:scale-105"
                     priority
-                    onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_DETAIL_IMAGE; e.currentTarget.setAttribute('data-ai-hint', 'image error placeholder'); }}
                   />
                 ) : (
                   <Package className={ICON_PLACEHOLDER_SIZE_DETAIL} data-ai-hint="product detail icon placeholder" />

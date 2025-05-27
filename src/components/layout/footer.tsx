@@ -10,15 +10,15 @@ export default function Footer() {
   const navLinks = [
     { label: 'خانه', href: '/' },
     { label: 'محصولات', href: '/products' },
-    { label: 'درباره ما', href: '/about' }, // Placeholder, page doesn't exist yet
-    { label: 'تماس با ما', href: '/contact' }, // Placeholder, page doesn't exist yet
+    { label: 'درباره ما', href: '/about' },
+    { label: 'تماس با ما', href: '/contact' },
   ];
 
   const socialLinks = [
-    { icon: Instagram, href: '#', label: 'اینستاگرام نیلوفر بوتیک' },
-    { icon: Send, href: '#', label: 'تلگرام نیلوفر بوتیک' }, // Using Send for Telegram
-    { icon: Twitter, href: '#', label: 'توییتر نیلوفر بوتیک' },
-    { icon: Facebook, href: '#', label: 'فیسبوک نیلوفر بوتیک' },
+    { icon: Instagram, href: '#', label: 'اینستاگرام زومجی' },
+    { icon: Send, href: '#', label: 'تلگرام زومجی' }, // Using Send for Telegram
+    { icon: Twitter, href: '#', label: 'توییتر زومجی' },
+    { icon: Facebook, href: '#', label: 'فیسبوک زومجی' },
   ];
 
   return (
@@ -31,7 +31,7 @@ export default function Footer() {
                 <Logo />
             </div>
             <p className="text-sm leading-relaxed">
-              نیلوفر بوتیک، مقصد شما برای جدیدترین و با کیفیت‌ترین پوشاک و اکسسوری. ما به ارائه تجربه‌ای لذت‌بخش از خرید آنلاین متعهد هستیم.
+              زومجی، مقصد شما برای جدیدترین و با کیفیت‌ترین پوشاک و اکسسوری. ما به ارائه تجربه‌ای لذت‌بخش از خرید آنلاین متعهد هستیم.
             </p>
           </div>
 
@@ -54,7 +54,7 @@ export default function Footer() {
             <h3 className="text-lg font-semibold text-foreground mb-3">تماس با ما</h3>
             <address className="not-italic space-y-2 text-sm">
               <p>تهران، خیابان اصلی، کوچه فرعی، پلاک ۱۰ (نمایشی)</p>
-              <p>ایمیل: <a href="mailto:info@niloofarboutique.com" className="hover:text-primary transition-colors">info@niloofarboutique.com</a> (نمایشی)</p>
+              <p>ایمیل: <a href="mailto:info@zoomg.com" className="hover:text-primary transition-colors">info@zoomg.com</a> (نمایشی)</p>
               <p>تلفن: <a href="tel:02112345678" className="hover:text-primary transition-colors">۰۲۱-۱۲۳۴۵۶۷۸</a> (نمایشی)</p>
             </address>
           </div>
@@ -91,7 +91,7 @@ export default function Footer() {
 
         <div className="text-center">
           <p className="text-sm">
-            &copy; {currentYear} نیلوفر بوتیک. تمامی حقوق محفوظ است.
+            &copy; {currentYear} زومجی. تمامی حقوق محفوظ است.
           </p>
           <p className="text-xs mt-1">
             طراحی و توسعه با ❤️ (این یک نمونه اولیه است)

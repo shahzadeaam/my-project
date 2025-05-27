@@ -8,18 +8,27 @@ import { collection, getDocs, query, orderBy, limit as firestoreLimit } from 'fi
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'محصولات - نیلوفر بوتیک',
-  description: 'مجموعه‌ای از بهترین و جدیدترین محصولات نیلوفر بوتیک.',
+  title: 'محصولات - زومجی',
+  description: 'مجموعه‌ای از بهترین و جدیدترین محصولات زومجی.',
 };
 
 async function getProducts(): Promise<Product[]> {
   const productsCol = collection(db, 'products');
   // You can add orderBy or limit here if needed, e.g., orderBy('createdAt', 'desc')
   const productsSnapshot = await getDocs(query(productsCol, orderBy('createdAt', 'desc')));
-  const productList = productsSnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as Product));
+  const productList = productsSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name || "محصول بدون نام",
+      price: data.price || 0,
+      description: data.description || "",
+      imageUrl: data.imageUrl || "",
+      imageHint: data.imageHint || "product",
+      createdAt: data.createdAt,
+      // updatedAt will also be available if you save it in Firestore
+    } as Product;
+  });
   return productList;
 }
 
@@ -35,7 +44,7 @@ export default async function ProductsPage() {
             همه محصولات
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            جدیدترین و با کیفیت‌ترین محصولات را در نیلوفر بوتیک بیابید.
+            جدیدترین و با کیفیت‌ترین محصولات را در زومجی بیابید.
           </p>
         </div>
         {products.length > 0 ? (

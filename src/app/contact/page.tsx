@@ -18,8 +18,8 @@ import type { Metadata } from 'next'; // For reference, actual metadata set by p
 
 // If this page needs strict metadata, it should be set in a parent Server Component or layout.
 // export const metadata: Metadata = {
-//   title: 'تماس با ما - نیلوفر بوتیک',
-//   description: 'با تیم پشتیبانی نیلوفر بوتیک در تماس باشید یا پیام خود را ارسال کنید.',
+//   title: 'تماس با ما - زومجی',
+//   description: 'با تیم پشتیبانی زومجی در تماس باشید یا پیام خود را ارسال کنید.',
 // };
 
 const contactFormSchema = z.object({
@@ -150,7 +150,7 @@ export default function ContactPage() {
                   <Mail className="h-6 w-6 text-primary mt-0.5 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-foreground text-base mb-0.5">آدرس ایمیل (نمایشی):</h3>
-                    <p dir="ltr" className="text-sm hover:text-primary transition-colors">support@niloofarboutique.com</p>
+                    <p dir="ltr" className="text-sm hover:text-primary transition-colors">support@zoomg.com</p>
                   </div>
                 </div>
                  <div className="pt-2 p-3 rounded-md hover:bg-muted/30 transition-colors">

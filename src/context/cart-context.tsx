@@ -25,7 +25,7 @@ interface CartContextType extends CartState {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_STORAGE_KEY = 'niloofar_boutique_cart';
+const CART_STORAGE_KEY = 'zoomg_cart';
 
 type CartAction =
   | { type: 'ADD_ITEM'; product: Product; quantity: number }

@@ -6,8 +6,8 @@ import type { Metadata } from 'next';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 export const metadata: Metadata = {
-  title: 'سبد خرید - نیلوفر بوتیک',
-  description: 'سبد خرید شما در نیلوفر بوتیک.',
+  title: 'سبد خرید - زومجی',
+  description: 'سبد خرید شما در زومجی.',
 };
 
 export default function CartPage() {
