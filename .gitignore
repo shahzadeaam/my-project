@@ -44,5 +44,5 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 
-# .اتصال فایربیس کنسول با فایربیس استودیو
+# .اتصال فایربیس کنسول با فایربیس استودیوgit push -u origin master
 .env.local
