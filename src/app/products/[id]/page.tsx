@@ -10,12 +10,14 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { Package } from 'lucide-react'; // Import Package icon
 
 interface ProductDetailsPageProps {
   params: { id: string };
 }
 
-const DEFAULT_PRODUCT_IMAGE = "https://placehold.co/600x750.png"; // Larger for details page
+const DEFAULT_PRODUCT_DETAIL_IMAGE = "https://placehold.co/600x750.png"; 
+const ICON_PLACEHOLDER_SIZE_DETAIL = "w-24 h-24 text-muted-foreground";
 
 async function getProduct(id: string): Promise<Product | null> {
   const productDocRef = doc(db, 'products', id);
@@ -30,7 +32,7 @@ async function getProduct(id: string): Promise<Product | null> {
     name: data.name || "نام محصول نامشخص",
     price: data.price || 0,
     description: data.description || "توضیحات موجود نیست.",
-    imageUrl: data.imageUrl && data.imageUrl.trim() !== "" ? data.imageUrl : DEFAULT_PRODUCT_IMAGE,
+    imageUrl: data.imageUrl || "", // Return empty string if undefined/null
     imageHint: data.imageHint || "product image",
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -65,13 +67,13 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
     name: product.name,
     price: product.price,
     description: product.description,
-    imageUrl: product.imageUrl, // Already handled with default in getProduct
+    imageUrl: product.imageUrl, 
     imageHint: product.imageHint,
   };
   
   const displayPrice = product.price.toLocaleString('fa-IR') + ' تومان';
-  const displayImageUrl = product.imageUrl; // Already has default from getProduct
-  const displayImageHint = product.imageHint || "product image";
+  const displayImageUrl = product.imageUrl && product.imageUrl.trim() !== "" ? product.imageUrl : "";
+  const displayImageHint = displayImageUrl ? (product.imageHint || "product image") : "no image detail placeholder";
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -80,16 +82,21 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
         <Card className="overflow-hidden shadow-xl">
           <CardContent className="p-6 md:p-8">
             <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
-              <div className="aspect-[4/5] relative w-full overflow-hidden rounded-lg shadow-lg bg-muted">
-                <Image
-                  src={displayImageUrl}
-                  alt={product.name}
-                  layout="fill"
-                  objectFit="cover"
-                  data-ai-hint={displayImageHint}
-                  className="rounded-lg transition-transform duration-300 hover:scale-105"
-                  priority
-                />
+              <div className="aspect-[4/5] relative w-full overflow-hidden rounded-lg shadow-lg bg-muted flex items-center justify-center">
+                {displayImageUrl ? (
+                  <Image
+                    src={displayImageUrl}
+                    alt={product.name}
+                    layout="fill"
+                    objectFit="cover"
+                    data-ai-hint={displayImageHint}
+                    className="rounded-lg transition-transform duration-300 hover:scale-105"
+                    priority
+                    onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_DETAIL_IMAGE; e.currentTarget.setAttribute('data-ai-hint', 'image error placeholder'); }}
+                  />
+                ) : (
+                  <Package className={ICON_PLACEHOLDER_SIZE_DETAIL} data-ai-hint="product detail icon placeholder" />
+                )}
               </div>
               <div className="flex flex-col gap-4 py-4">
                 <h1 className="text-3xl lg:text-4xl font-bold text-foreground">{product.name}</h1>

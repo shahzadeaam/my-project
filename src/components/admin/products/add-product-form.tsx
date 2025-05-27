@@ -19,8 +19,8 @@ const productFormSchema = z.object({
   name: z.string().min(3, { message: 'نام محصول باید حداقل ۳ حرف باشد.' }).max(100, { message: 'نام محصول نمی‌تواند بیشتر از ۱۰۰ حرف باشد.'}),
   price: z.coerce.number().positive({ message: 'قیمت باید یک عدد مثبت باشد.' }),
   description: z.string().min(10, { message: 'توضیحات باید حداقل ۱۰ حرف باشد.' }).max(1000, { message: 'توضیحات نمی‌تواند بیشتر از ۱۰۰۰ حرف باشد.'}),
-  imageUrl: z.string().url({ message: 'آدرس تصویر نامعتبر است.' }).min(1, {message: 'آدرس تصویر الزامی است.'}),
-  imageHint: z.string().min(2, { message: 'راهنمای تصویر باید حداقل ۲ حرف باشد.'}).max(50, {message: 'راهنمای تصویر نمی‌تواند بیشتر از ۵۰ حرف باشد.'}),
+  imageUrl: z.string().url({ message: 'آدرس تصویر باید یک URL معتبر باشد.' }).optional().or(z.literal('')),
+  imageHint: z.string().max(50, {message: 'راهنمای تصویر نمی‌تواند بیشتر از ۵۰ حرف باشد.'}).optional().or(z.literal('')),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -36,6 +36,10 @@ export default function AddProductForm({ onProductAdded, setOpen }: AddProductFo
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
+    defaultValues: { // Set default values for optional fields
+      imageUrl: '',
+      imageHint: ''
+    }
   });
 
   const onSubmit: SubmitHandler<ProductFormValues> = async (data) => {
@@ -43,7 +47,11 @@ export default function AddProductForm({ onProductAdded, setOpen }: AddProductFo
     try {
       const productsCollectionRef = collection(db, 'products');
       await addDoc(productsCollectionRef, {
-        ...data,
+        name: data.name,
+        price: data.price,
+        description: data.description,
+        imageUrl: data.imageUrl || "", // Ensure empty string if undefined/null
+        imageHint: data.imageHint || "", // Ensure empty string if undefined/null
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -86,12 +94,12 @@ export default function AddProductForm({ onProductAdded, setOpen }: AddProductFo
         {errors.description && <p className="text-sm text-destructive mt-1">{errors.description.message}</p>}
       </div>
       <div>
-        <Label htmlFor="imageUrl">آدرس URL تصویر محصول</Label>
+        <Label htmlFor="imageUrl">آدرس URL تصویر محصول (اختیاری)</Label>
         <Input id="imageUrl" {...register('imageUrl')} className="mt-1.5 h-11" dir="ltr" placeholder="https://example.com/image.png" />
         {errors.imageUrl && <p className="text-sm text-destructive mt-1">{errors.imageUrl.message}</p>}
       </div>
       <div>
-        <Label htmlFor="imageHint">راهنمای تصویر (برای جستجو)</Label>
+        <Label htmlFor="imageHint">راهنمای تصویر (اختیاری - برای جستجو)</Label>
         <Input id="imageHint" {...register('imageHint')} className="mt-1.5 h-11" placeholder="مثلا: مانتو کتان" />
         {errors.imageHint && <p className="text-sm text-destructive mt-1">{errors.imageHint.message}</p>}
       </div>
