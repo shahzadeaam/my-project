@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, type SubmitHandler, Controller } from 'react-hook-form'; // Controller was already imported
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -81,7 +81,11 @@ export default function EditUserForm({ user, onSave, isSaving }: EditUserFormPro
           name="role"
           control={control}
           render={({ field }) => (
-            <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <Select 
+              onValueChange={field.onChange} 
+              value={field.value} // Changed from defaultValue to value
+              dir="rtl" // Added dir for consistency
+            >
               <SelectTrigger id="roleEditForm" className="mt-1.5 h-11">
                 <SelectValue placeholder="انتخاب نقش..." />
               </SelectTrigger>
