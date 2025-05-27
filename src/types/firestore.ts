@@ -3,13 +3,13 @@ import type { Timestamp } from 'firebase/firestore';
 
 // محصولات
 export interface Product {
-  id: string; // Firestore document ID
+  id: string; // Firestore document ID - معمولا در زمان خواندن اضافه می‌شود
   name: string;
   price: number; // قیمت به صورت عددی ذخیره شود
   description: string;
   imageUrl: string;
   imageHint: string; // برای جستجوی تصویر جایگزین
-  createdAt?: Timestamp; // زمان ایجاد محصول
+  createdAt?: Timestamp; // زمان ایجاد محصول (توسط سرور مقداردهی می‌شود)
   updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی
 }
 
@@ -21,53 +21,53 @@ export interface UserProfileDocument {
   phoneNumber?: string; // شماره تماس (اختیاری)
   role?: 'customer' | 'admin'; // نقش کاربر
   privacySettings?: {
-    showPublicProfile?: boolean; // آیا پروفایل عمومی نمایش داده شود (برای آینده)
-    receiveNewsletter?: boolean; // آیا خبرنامه دریافت کند
-    shareActivity?: boolean; // برای آینده، اشتراک فعالیت خرید
+    showPublicProfile?: boolean;
+    receiveNewsletter?: boolean;
+    shareActivity?: boolean;
   };
-  createdAt?: Timestamp; // زمان ایجاد پروفایل
-  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی پروفایل
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 // آدرس‌های کاربر (به عنوان زیرکالکشن در داکیومنت کاربر)
 export interface Address {
   id: string; // Firestore document ID برای آدرس
-  recipientName: string; // نام گیرنده
-  street: string; // خیابان، کوچه، پلاک
-  city: string; // شهر
-  postalCode: string; // کد پستی
-  phoneNumber: string; // شماره تماس برای این آدرس
-  isDefault?: boolean; // آیا آدرس پیش‌فرض است
-  createdAt?: Timestamp; // زمان ایجاد آدرس
-  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی آدرس
+  recipientName: string;
+  street: string;
+  city: string;
+  postalCode: string;
+  phoneNumber: string;
+  isDefault?: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 // آیتم‌های موجود در یک سفارش
 export interface OrderItem {
-  productId: string; // شناسه محصول
-  name: string; // نام محصول در زمان سفارش
-  price: number; // قیمت واحد محصول در زمان سفارش
-  quantity: number; // تعداد سفارش داده شده
-  imageUrl?: string; // URL تصویر محصول در زمان سفارش
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  imageUrl?: string;
 }
 
 // سفارش‌ها در کالکشن orders
 export interface OrderDocument {
   id: string; // Firestore document ID برای سفارش
-  userId: string; // UID کاربری که سفارش را ثبت کرده
-  items: OrderItem[]; // لیست محصولات سفارش داده شده
-  totalAmount: number; // مبلغ کل سفارش
-  status: 'در حال پردازش' | 'ارسال شده' | 'تحویل داده شده' | 'لغو شده'; // وضعیت سفارش
-  customerInfo: { // اطلاعات مشتری که در فرم پرداخت وارد شده
+  userId: string;
+  items: OrderItem[];
+  totalAmount: number;
+  status: 'در حال پردازش' | 'ارسال شده' | 'تحویل داده شده' | 'لغو شده';
+  customerInfo: {
     fullName: string;
     email: string;
     phoneNumber: string;
   };
-  shippingAddress?: Address; // آدرس ارسال سفارش (می‌تواند کپی از آدرس کاربر یا آدرس جدید باشد)
-  paymentDetails?: { // جزئیات پرداخت شبیه‌سازی شده
-    orderId: string; // شناسه سفارش از درگاه پرداخت (نمایشی)
-    gateway?: string; // نام درگاه (نمایشی)
+  shippingAddress?: Address;
+  paymentDetails?: {
+    orderId: string;
+    gateway?: string;
   };
-  createdAt: Timestamp; // زمان ثبت سفارش
-  updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی وضعیت سفارش
+  createdAt: Timestamp; // زمان ثبت سفارش (توسط سرور مقداردهی می‌شود)
+  updatedAt?: Timestamp;
 }
