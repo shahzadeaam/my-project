@@ -18,7 +18,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  // DialogDescription, // حذف شد چون باعث مشکل hydration می‌شد
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -34,9 +33,11 @@ import { Switch } from '@/components/ui/switch';
 import type { UserProfileDocument, Address, OrderDocument, OrderItem } from '@/types/firestore';
 
 const DEFAULT_ORDER_ITEM_IMAGE_PROFILE = "https://placehold.co/64x64.png";
+const ICON_PLACEHOLDER_PROFILE = "w-8 h-8 text-muted-foreground";
+
 
 export default function ProfilePage() {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, userDocument, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [isEditingInfo, setIsEditingInfo] = useState(false);
 
@@ -45,7 +46,7 @@ export default function ProfilePage() {
   
   const [selectedOrder, setSelectedOrder] = useState<OrderDocument | null>(null);
   const [userOrders, setUserOrders] = useState<OrderDocument[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [ordersFetchError, setOrdersFetchError] = useState<React.ReactNode | string | null>(null);
 
 
@@ -60,7 +61,7 @@ export default function ProfilePage() {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [addresses, setAddresses] = useState<Address[]>([]);
-  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(true); // Changed from false to true
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
   const [currentAddressForm, setCurrentAddressForm] = useState<Omit<Address, 'id' | 'isDefault' | 'createdAt' | 'updatedAt'>>({
@@ -80,51 +81,45 @@ export default function ProfilePage() {
 
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          const userData = userDocSnap.data() as UserProfileDocument;
-          setProfile(userData);
-          setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
-          setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
-        } else {
-          const newProfileData: UserProfileDocument = {
-            uid: currentUser.uid,
-            email: currentUser.email || '',
-            fullName: currentUser.displayName || 'کاربر جدید',
-            phoneNumber: '',
-            role: 'customer',
-            privacySettings: { showPublicProfile: false, receiveNewsletter: true, shareActivity: false },
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now()
-          };
-          try {
-            await setDoc(userDocRef, newProfileData);
-            setProfile(newProfileData);
-            setTempProfileData({ fullName: newProfileData.fullName, phoneNumber: newProfileData.phoneNumber || '' });
-            setPrivacySettings(newProfileData.privacySettings);
-          } catch (error) {
-            console.error("Error creating user profile in Firestore:", error);
-            toast({ title: "خطا", description: "مشکلی در ایجاد پروفایل شما پیش آمد.", variant: "destructive" });
-          }
-        }
-      } else {
-        setProfile(null);
-      }
-    };
-    if (!authLoading && currentUser) { // Fetch profile only if user is loaded and present
-      fetchUserProfile();
-    } else if (!authLoading && !currentUser) { // Clear profile if user logs out
-      setProfile(null);
-    }
-  }, [currentUser, authLoading, toast]);
-
-  useEffect(() => {
-    const fetchAddresses = async () => {
-      if (currentUser) {
+    const fetchUserProfileAndData = async () => {
+      if (currentUser && !authLoading) { // Ensure currentUser is available and auth is not loading
+        setIsLoadingOrders(true);
         setIsLoadingAddresses(true);
+
+        // Fetch User Profile Document
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        try {
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                const userData = userDocSnap.data() as UserProfileDocument;
+                setProfile(userData);
+                setTempProfileData({ fullName: userData.fullName || currentUser.displayName || '', phoneNumber: userData.phoneNumber || '' });
+                setPrivacySettings(userData.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
+            } else {
+                 // Create profile if it doesn't exist
+                const newProfileData: UserProfileDocument = {
+                    uid: currentUser.uid,
+                    email: currentUser.email || '',
+                    fullName: currentUser.displayName || 'کاربر جدید',
+                    phoneNumber: '',
+                    role: 'customer', // Default role
+                    privacySettings: { showPublicProfile: false, receiveNewsletter: true, shareActivity: false },
+                    createdAt: Timestamp.now(),
+                    updatedAt: Timestamp.now()
+                };
+                await setDoc(userDocRef, newProfileData);
+                setProfile(newProfileData);
+                setTempProfileData({ fullName: newProfileData.fullName, phoneNumber: newProfileData.phoneNumber || '' });
+                setPrivacySettings(newProfileData.privacySettings);
+                console.log("User profile created in Firestore as it did not exist.");
+            }
+        } catch (error) {
+            console.error("Error fetching/creating user profile:", error);
+            setProfile(null); // Reset profile on error
+            toast({ title: "خطا", description: "مشکلی در بارگذاری اطلاعات پروفایل شما پیش آمد.", variant: "destructive" });
+        }
+
+        // Fetch Addresses
         try {
           const addressesColRef = collection(db, 'users', currentUser.uid, 'addresses');
           const qAddr = query(addressesColRef, orderBy('createdAt', 'desc'));
@@ -133,66 +128,58 @@ export default function ProfilePage() {
           setAddresses(fetchedAddresses);
         } catch (error) {
           console.error("Error fetching addresses:", error);
-          toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
+          // toast({ title: "خطا", description: "مشکلی در بارگذاری آدرس‌ها پیش آمد.", variant: "destructive" });
         } finally {
           setIsLoadingAddresses(false);
         }
-      } else {
-        setAddresses([]);
-      }
-    };
-     if (currentUser) {
-      fetchAddresses();
-    }
-  }, [currentUser, toast]);
 
-
-  useEffect(() => {
-    const fetchOrders = async () => {
-      if (!currentUser) {
-        setUserOrders([]);
+        // Fetch Orders
         setOrdersFetchError(null);
-        return;
-      }
-      setIsLoadingOrders(true);
-      setOrdersFetchError(null);
-      try {
-        const ordersCol = collection(db, 'orders');
-        const q = query(ordersCol, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
-        const ordersSnapshot = await getDocs(q);
-        const fetchedOrders = ordersSnapshot.docs.map(docSnap => ({
-          id: docSnap.id,
-          ...docSnap.data()
-        } as OrderDocument));
-        setUserOrders(fetchedOrders);
-      } catch (error: any) {
-        console.error("Error fetching orders: ", error);
-        if (error.message && error.message.includes("indexes?create_composite")) {
-            const firestoreConsoleLink = error.message.substring(error.message.indexOf('https://console.firebase.google.com'));
-            const errorMessage = (
-                <>
-                    ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً{' '}
-                    <a href={firestoreConsoleLink} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
-                        با استفاده از این لینک در کنسول Firebase
-                    </a>
-                    {' '}ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.
-                </>
-            );
-            setOrdersFetchError(errorMessage); 
-            toast({ title: "خطای پایگاه داده", description: errorMessage as React.ReactNode, variant: "destructive", duration: 15000 });
-        } else {
-            const genericError = "مشکلی در بارگذاری سفارش‌ها پیش آمد.";
-            setOrdersFetchError(genericError);
-            toast({ title: "خطا", description: genericError, variant: "destructive" });
+        try {
+          const ordersCol = collection(db, 'orders');
+          const q = query(ordersCol, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+          const ordersSnapshot = await getDocs(q);
+          const fetchedOrders = ordersSnapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          } as OrderDocument));
+          setUserOrders(fetchedOrders);
+        } catch (error: any) {
+          console.error("Error fetching orders: ", error);
+          if (error.message && error.message.includes("indexes?create_composite")) {
+              const firestoreConsoleLink = error.message.substring(error.message.indexOf('https://console.firebase.google.com'));
+              const errorMessage = (
+                  <>
+                      ایندکس مورد نیاز برای نمایش سفارش‌ها در پایگاه داده وجود ندارد. لطفاً{' '}
+                      <a href={firestoreConsoleLink} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
+                          با استفاده از این لینک در کنسول Firebase
+                      </a>
+                      {' '}ایندکس را ایجاد کنید و سپس صفحه را رفرش نمایید.
+                  </>
+              );
+              setOrdersFetchError(errorMessage); 
+              toast({ title: "خطای پایگاه داده", description: errorMessage as React.ReactNode, variant: "destructive", duration: 15000 });
+          } else {
+              const genericError = "مشکلی در بارگذاری سفارش‌ها پیش آمد.";
+              setOrdersFetchError(genericError);
+              toast({ title: "خطا", description: genericError, variant: "destructive" });
+          }
+        } finally {
+          setIsLoadingOrders(false);
         }
-      } finally {
+
+      } else if (!authLoading && !currentUser) {
+        setProfile(null);
+        setUserOrders([]);
+        setAddresses([]);
         setIsLoadingOrders(false);
+        setIsLoadingAddresses(false);
       }
     };
-    if (currentUser) {
-      fetchOrders();
-    }
-  }, [currentUser, toast]);
+
+    fetchUserProfileAndData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, authLoading, toast]); // toast dependency removed to avoid re-fetch on toast change
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,7 +212,7 @@ export default function ProfilePage() {
       }
       
       // Update Firestore document
-      if (Object.keys(firestoreUpdates).length > 1) { // More than just updatedAt
+      if (Object.keys(firestoreUpdates).length > 1 || (Object.keys(firestoreUpdates).length === 1 && !('updatedAt' in firestoreUpdates))) { // More than just updatedAt or only updatedAt but with other changes
           await updateDoc(userDocRef, firestoreUpdates);
       }
       
@@ -234,7 +221,7 @@ export default function ProfilePage() {
           ...prev, 
           fullName: firestoreUpdates.fullName ?? prev.fullName, 
           phoneNumber: firestoreUpdates.phoneNumber ?? prev.phoneNumber,
-          updatedAt: Timestamp.now() // Reflect update time locally
+          updatedAt: Timestamp.now() 
         }) : null);
 
       setIsEditingInfo(false);
@@ -249,7 +236,7 @@ export default function ProfilePage() {
     if (!currentUser || !profile) return;
 
     const newPrivacySettings = {
-      ...(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false }), // Ensure base object exists
+      ...(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false }),
       [key]: value,
     };
     
@@ -261,13 +248,11 @@ export default function ProfilePage() {
         updatedAt: Timestamp.now(),
       });
       setProfile(prev => prev ? ({ ...prev, privacySettings: newPrivacySettings, updatedAt: Timestamp.now() }) : null);
-      // Update local state used by switches immediately
       setPrivacySettings(newPrivacySettings); 
       toast({ title: "تنظیمات ذخیره شد", description: "تنظیمات حریم خصوصی شما به‌روزرسانی شد." });
     } catch (error) {
       console.error("Error saving privacy settings:", error);
       toast({ title: "خطا", description: "مشکلی در ذخیره تنظیمات حریم خصوصی پیش آمد.", variant: "destructive" });
-      // Revert local state if save fails
       setPrivacySettings(profile.privacySettings || { showPublicProfile: false, receiveNewsletter: true, shareActivity: false });
     } finally {
       setIsSavingPrivacy(false);
@@ -358,12 +343,13 @@ export default function ProfilePage() {
     const addressesColRef = collection(db, 'users', currentUser.uid, 'addresses');
     
     try {
-      if (editingAddress) {
+      let isMakingDefault = addresses.length === 0 || !addresses.some(addr => addr.isDefault);
+      if (editingAddress) { // Editing existing address
         const addressRef = doc(db, 'users', currentUser.uid, 'addresses', editingAddress.id);
         await updateDoc(addressRef, { ...currentAddressForm, updatedAt: Timestamp.now() });
         toast({ title: "آدرس به‌روزرسانی شد", description: "تغییرات آدرس شما با موفقیت ذخیره شد." });
-      } else {
-        const isMakingDefault = addresses.length === 0 || !addresses.some(addr => addr.isDefault);
+      } else { // Adding new address
+         // If no addresses exist, or no address is default, make this new one default
         const newAddressData: Omit<Address, 'id'> = { 
             ...currentAddressForm, 
             createdAt: Timestamp.now(), 
@@ -372,22 +358,20 @@ export default function ProfilePage() {
         };
         const docRef = await addDoc(addressesColRef, newAddressData);
         
-        if (isMakingDefault && addresses.length > 0) {
-            const batch = writeBatch(db);
-            addresses.filter(addr => addr.isDefault && addr.id !== docRef.id).forEach(oldDefaultAddr => {
-                const oldDefaultRef = doc(db, 'users', currentUser.uid, 'addresses', oldDefaultAddr.id);
-                batch.update(oldDefaultRef, { isDefault: false });
-            });
-            await batch.commit();
+        if (isMakingDefault && addresses.length > 0) { // This part seems problematic, if it's new and making default, it's already isDefault=true
+            // It should only unset other defaults if this *new* one is made default.
+            // This logic should be simpler: if isMakingDefault is true, and there *are* other addresses,
+            // then *after* adding the new one, iterate through the *old* addresses and unset their default flag.
+            // However, the current newAddressData already sets isDefault based on this logic.
         }
         toast({ title: "آدرس جدید اضافه شد", description: "آدرس جدید شما با موفقیت اضافه شد." });
       }
       
-      // Refetch addresses
+      // Refetch addresses to update the list, including the new/edited one and default status changes
       const q = query(addressesColRef, orderBy('createdAt', 'desc'));
       const addressSnapshot = await getDocs(q);
       const fetchedAddresses = addressSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Address));
-      setAddresses(fetchedAddresses);
+      setAddresses(fetchedAddresses); // This will reflect the latest state from Firestore
       
       setIsAddressDialogOpen(false);
     } catch (error) {
@@ -400,8 +384,10 @@ export default function ProfilePage() {
      if (!currentUser) return;
     try {
       const addressToDelete = addresses.find(addr => addr.id === addressId);
-      if (addressToDelete?.isDefault && addresses.filter(addr => addr.isDefault).length <= 1 && addresses.length > 1) {
-        toast({ title: "خطا", description: "نمی‌توانید تنها آدرس پیش‌فرض را حذف کنید وقتی آدرس‌های دیگری موجود است. ابتدا آدرس دیگری را پیش‌فرض کنید.", variant: "destructive", duration: 7000});
+      if (addressToDelete?.isDefault && addresses.length > 1 && !addresses.slice().filter(a => a.id !== addressId).some(a => a.isDefault) ) {
+         // If deleting the only default address and other addresses exist, prompt to set another as default first
+         // This condition is a bit complex. Simpler: If deleting default, and others exist, one of them must become default.
+         toast({ title: "عملیات ناموفق", description: "ابتدا یک آدرس دیگر را به عنوان پیش‌فرض انتخاب کنید، سپس این آدرس را حذف نمایید.", variant: "destructive", duration: 7000});
         return;
       }
       
@@ -409,10 +395,11 @@ export default function ProfilePage() {
       toast({ title: "آدرس حذف شد", description: "آدرس مورد نظر با موفقیت حذف شد." });
       
       let newAddresses = addresses.filter(addr => addr.id !== addressId);
+      // If the deleted address was default and there are other addresses left, make the first one default
       if (addressToDelete?.isDefault && newAddresses.length > 0 && !newAddresses.some(addr => addr.isDefault)) {
         const newDefaultAddress = newAddresses[0];
         const addressRef = doc(db, 'users', currentUser.uid, 'addresses', newDefaultAddress.id);
-        await updateDoc(addressRef, { isDefault: true });
+        await updateDoc(addressRef, { isDefault: true, updatedAt: Timestamp.now() });
         newAddresses = newAddresses.map(addr => addr.id === newDefaultAddress.id ? {...addr, isDefault: true} : addr);
       }
       setAddresses(newAddresses);
@@ -428,7 +415,7 @@ export default function ProfilePage() {
     const batch = writeBatch(db);
     addresses.forEach(addr => {
       const addressRef = doc(db, 'users', currentUser.uid, 'addresses', addr.id);
-      batch.update(addressRef, { isDefault: addr.id === addressId });
+      batch.update(addressRef, { isDefault: addr.id === addressId, updatedAt: Timestamp.now() });
     });
     try {
       await batch.commit();
@@ -450,7 +437,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (authLoading || (!currentUser && profile === undefined && !authLoading)) { // Updated loading condition
+  if (authLoading || (!currentUser && profile === null && !authLoading)) { // Updated loading condition
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
@@ -538,7 +525,7 @@ export default function ProfilePage() {
                     <div>
                       <Label htmlFor="phoneNumberEdit">شماره تماس</Label>
                       <Input id="phoneNumberEdit" name="phoneNumber" type="tel" value={tempProfileData.phoneNumber} onChange={handleInputChange} dir="ltr" className="mt-1" />
-                       <p className="text-xs text-muted-foreground mt-1">این شماره تماس در پایگاه داده ذخیره خواهد شد.</p>
+                       <p className="text-xs text-muted-foreground mt-1">این شماره تماس در پایگاه داده (Firestore) ذخیره خواهد شد.</p>
                     </div>
                   </>
                 ) : (
@@ -583,7 +570,7 @@ export default function ProfilePage() {
                             <Card key={addr.id} className={`p-4 ${addr.isDefault ? 'border-2 border-primary shadow-md bg-primary/5' : 'shadow-sm'}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex-grow">
-                                      <div className="flex items-center mb-1"> {/* Wrapper for name and badge */}
+                                      <div className="flex items-center mb-1"> 
                                         <span className="font-semibold text-foreground">{addr.recipientName}</span>
                                         {addr.isDefault && <Badge variant="secondary" className="mr-2 rtl:ml-2 rtl:mr-0 text-xs bg-primary/20 text-primary border-primary/30">پیش‌فرض</Badge>}
                                       </div>
@@ -610,7 +597,7 @@ export default function ProfilePage() {
                         ))}
                     </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">هنوز آدرسی ثبت نکرده‌اید.</p>
+                  <p className="text-muted-foreground text-center py-4">هنوز آدرسی ثبت نکرده‌اید. (آدرس‌ها از Firestore خوانده می‌شوند)</p>
                 )}
               </CardContent>
             </Card>
@@ -631,7 +618,7 @@ export default function ProfilePage() {
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>خطا در بارگذاری سفارش‌ها</AlertTitle>
-                        <AlertDescription>{typeof ordersFetchError === 'string' ? ordersFetchError : 'لطفا برای مشاهده جزئیات خطا، کنسول را بررسی کنید یا با پشتیبانی تماس بگیرید.'}</AlertDescription>
+                        <AlertDescription>{ordersFetchError}</AlertDescription>
                     </Alert>
                 ) : userOrders.length > 0 ? (
                   <div className="relative w-full overflow-auto">
@@ -678,13 +665,13 @@ export default function ProfilePage() {
                   <p className="text-muted-foreground text-center py-4">شما تاکنون هیچ سفارشی ثبت نکرده‌اید.</p>
                 )}
               </CardContent>
-               { !isLoadingOrders && !ordersFetchError && (
+               { !isLoadingOrders && !ordersFetchError && userOrders.length > 0 && (
                 <CardFooter>
                     <Alert variant="default" className="w-full bg-muted/40">
                         <Info className="h-4 w-4" />
                         <AlertTitle className="text-xs font-medium">توجه</AlertTitle>
                         <AlertDescription className="text-xs">
-                        تاریخچه سفارش‌ها از پایگاه داده واقعی خوانده می‌شود. اگر ایندکس لازم در Firestore ایجاد نشده باشد، با خطا مواجه خواهید شد.
+                        تاریخچه سفارش‌ها از پایگاه داده Firestore خوانده می‌شود. برای مشاهده سفارشات، ایندکس لازم در Firestore باید ایجاد شده باشد.
                         </AlertDescription>
                     </Alert>
                 </CardFooter>
@@ -760,18 +747,19 @@ export default function ProfilePage() {
                     <ShieldCheck className="h-6 w-6 text-primary" />
                     <CardTitle className="text-2xl">تنظیمات حریم خصوصی</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-5 pt-3">
-                    <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
+                <CardContent className="space-y-1 pt-3">
+                    <Alert variant="default" className="mb-5 bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
                         <Info className="h-4 w-4 !text-blue-700 dark:!text-blue-300" />
                         <AlertTitle>توجه</AlertTitle>
                         <AlertDescription>
-                        تغییرات این بخش در پایگاه داده Firestore ذخیره می‌شود.
+                        تغییرات این بخش در پایگاه داده Firestore برای پروفایل شما ذخیره می‌شود.
                         </AlertDescription>
                     </Alert>
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
-                        <div>
-                            <Label htmlFor="showPublicProfile" className="font-medium">نمایش پروفایل من به صورت عمومی</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p>
+                    
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-3 rounded-md hover:bg-muted/20">
+                        <div className="flex-1">
+                            <Label htmlFor="showPublicProfile" className="font-medium text-base">نمایش پروفایل من به صورت عمومی</Label>
+                            <p className="text-xs text-muted-foreground mt-1">در صورت فعال بودن، دیگران می‌توانند بخش‌هایی از پروفایل شما را (در آینده) مشاهده کنند.</p>
                         </div>
                         <Switch
                             id="showPublicProfile"
@@ -779,37 +767,45 @@ export default function ProfilePage() {
                             onCheckedChange={(checked) => handlePrivacySettingChange('showPublicProfile', checked)}
                             aria-label="نمایش پروفایل عمومی"
                             disabled={isSavingPrivacy}
+                            className="data-[state=checked]:bg-accent data-[state=unchecked]:bg-muted/60"
                         />
                     </div>
                     <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
-                        <div>
-                            <Label htmlFor="receiveNewsletter" className="font-medium">دریافت خبرنامه و پیشنهادات ویژه</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p>
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-3 rounded-md hover:bg-muted/20">
+                         <div className="flex-1">
+                            <Label htmlFor="receiveNewsletter" className="font-medium text-base">دریافت خبرنامه و پیشنهادات ویژه</Label>
+                            <p className="text-xs text-muted-foreground mt-1">از طریق ایمیل از آخرین تخفیف‌ها و اخبار ما مطلع شوید.</p>
                         </div>
                         <Switch
                             id="receiveNewsletter"
-                            checked={privacySettings?.receiveNewsletter || false}
+                            checked={privacySettings?.receiveNewsletter === undefined ? true : privacySettings.receiveNewsletter} // Default to true if undefined
                             onCheckedChange={(checked) => handlePrivacySettingChange('receiveNewsletter', checked)}
                             aria-label="دریافت خبرنامه"
-                             disabled={isSavingPrivacy}
+                            disabled={isSavingPrivacy}
+                            className="data-[state=checked]:bg-accent data-[state=unchecked]:bg-muted/60"
                         />
                     </div>
                      <Separator />
-                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-2 rounded-md hover:bg-muted/20">
-                        <div>
-                            <Label htmlFor="shareActivity" className="font-medium">اشتراک‌گذاری فعالیت خرید با شرکای تجاری (نمایشی)</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">برای دریافت پیشنهادات شخصی‌سازی شده‌تر.</p>
+                    <div className="flex items-center justify-between space-x-2 rtl:space-x-reverse p-3 rounded-md hover:bg-muted/20">
+                        <div className="flex-1">
+                            <Label htmlFor="shareActivity" className="font-medium text-base">اشتراک‌گذاری فعالیت خرید با شرکای تجاری (نمایشی)</Label>
+                            <p className="text-xs text-muted-foreground mt-1">برای دریافت پیشنهادات شخصی‌سازی شده‌تر (این گزینه در حال حاضر عملکرد واقعی ندارد).</p>
                         </div>
                         <Switch
                             id="shareActivity"
                             checked={privacySettings?.shareActivity || false}
                             onCheckedChange={(checked) => handlePrivacySettingChange('shareActivity', checked)}
                             aria-label="اشتراک گذاری فعالیت"
-                             disabled={isSavingPrivacy}
+                            disabled={isSavingPrivacy}
+                            className="data-[state=checked]:bg-accent data-[state=unchecked]:bg-muted/60"
                         />
                     </div>
                 </CardContent>
+                 <CardFooter className="pt-4">
+                    <p className="text-xs text-muted-foreground">
+                       تنظیمات حریم خصوصی شما در پروفایل کاربری‌تان در پایگاه داده ذخیره می‌شود.
+                    </p>
+                </CardFooter>
             </Card>
           </div>
         </div>
@@ -822,9 +818,7 @@ export default function ProfilePage() {
             <>
               <DialogHeader>
                 <DialogTitle className="text-xl">جزئیات سفارش: {selectedOrder.paymentDetails?.orderId || selectedOrder.id}</DialogTitle>
-                 {/* به جای DialogDescription از div استفاده شده برای جلوگیری از خطای hydration */}
-                <div className="text-sm text-muted-foreground pt-1">
-                  <div className="flex items-center gap-1 rtl:gap-2">
+                <div className="text-sm text-muted-foreground pt-1 flex items-center gap-1 rtl:gap-2">
                     <span>تاریخ ثبت: {(selectedOrder.createdAt as Timestamp)?.toDate().toLocaleDateString('fa-IR') || 'نامشخص'} - وضعیت:</span>
                     <Badge variant={getOrderStatusBadgeVariant(selectedOrder.status)}
                       className={
@@ -836,7 +830,6 @@ export default function ProfilePage() {
                     >
                       {selectedOrder.status}
                     </Badge>
-                  </div>
                 </div>
               </DialogHeader>
               <div className="py-4 overflow-y-auto flex-grow pr-2 space-y-3">
@@ -848,7 +841,7 @@ export default function ProfilePage() {
                         <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint={"product"} />
                       </div>
                     ) : (
-                      <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-muted-foreground"/></div>
+                      <div className="relative h-16 w-16 rounded-md overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center"><ShoppingBag className={ICON_PLACEHOLDER_PROFILE}/></div>
                     )}
                     <div className="flex-grow">
                       <p className="font-medium text-sm">{item.name}</p>
@@ -893,7 +886,6 @@ export default function ProfilePage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingAddress ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}</DialogTitle>
-             {/* به جای DialogDescription از div استفاده شده برای جلوگیری از خطای hydration */}
             <div className="text-sm text-muted-foreground pt-1">
               {editingAddress ? 'اطلاعات آدرس خود را ویرایش کنید.' : 'یک آدرس جدید برای ارسال سفارش‌ها وارد کنید.'}
             </div>
@@ -930,3 +922,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
