@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -12,7 +11,7 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
+import { auth, isFirebaseAvailable } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, Loader2, Eye, EyeOff, Info, UserCircle } from 'lucide-react';
@@ -42,6 +41,21 @@ export default function LoginPage() {
     event.preventDefault();
     setError(null);
     setIsLoading(true);
+
+    // Check if Firebase is available
+    if (!isFirebaseAvailable() || !auth) {
+      // Mock functionality for development
+      setTimeout(() => {
+        toast({
+          title: 'ورود موفق! (Demo)',
+          description: 'در حالت توسعه، ورود شما با موفقیت انجام شد.',
+          variant: 'default',
+        });
+        router.push('/');
+        setIsLoading(false);
+      }, 2000);
+      return;
+    }
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -164,6 +178,15 @@ export default function LoginPage() {
               </div>
               <CardTitle className="text-3xl font-bold">ورود به حساب کاربری</CardTitle>
               <CardDescription className="text-muted-foreground">برای دسترسی به سفارشات و سبد خرید خود وارد شوید.</CardDescription>
+              {!isFirebaseAvailable() && (
+                <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>حالت توسعه</AlertTitle>
+                  <AlertDescription>
+                    Firebase تنظیم نشده است. این یک نسخه نمایشی است.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardHeader>
             <CardContent className="px-6 py-8 sm:px-8">
               {error && (
@@ -198,43 +221,47 @@ export default function LoginPage() {
                     dir="ltr" 
                     className="h-12 text-base pr-10"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)} 
+                    onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
                   />
-                  <Button 
-                      type="button" 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute right-1 top-8 h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "مخفی کردن رمز عبور" : "نمایش رمز عبور"}
-                      disabled={isLoading}
-                    >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute left-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <Link href="/auth/reset-password" className="font-medium text-primary hover:underline">
-                    رمز عبور خود را فراموش کرده‌اید؟
-                  </Link>
-                </div>
-                <Button type="submit" className="w-full h-12 text-base font-semibold mt-4" disabled={isLoading}>
+                <Button type="submit" className="w-full h-12 text-base font-semibold" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader2 className="ml-2 h-5 w-5 animate-spin rtl:mr-2 rtl:ml-0" />
                       در حال ورود...
                     </>
                   ) : (
-                    'ورود'
+                    'ورود به حساب کاربری'
                   )}
                 </Button>
               </form>
             </CardContent>
             <CardFooter className="flex flex-col items-center text-sm pb-8">
               <p className="text-muted-foreground">
-                هنوز حساب کاربری ندارید؟{' '}
+                حساب کاربری ندارید؟{' '}
                 <Link href="/auth/signup" className="font-semibold text-primary hover:underline">
-                  ایجاد حساب کاربری
+                  ثبت نام کنید
+                </Link>
+              </p>
+              <p className="text-muted-foreground mt-2">
+                رمز عبور خود را فراموش کرده‌اید؟{' '}
+                <Link href="/auth/reset-password" className="font-semibold text-primary hover:underline">
+                  بازیابی رمز عبور
                 </Link>
               </p>
             </CardFooter>

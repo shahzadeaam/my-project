@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 // محصولات
@@ -9,6 +8,7 @@ export interface Product {
   description: string; // توضیحات محصول
   imageUrl?: string; // آدرس URL تصویر محصول (اختیاری)
   imageHint?: string; // برای جستجوی تصویر جایگزین (اختیاری)
+  category?: string; // دسته‌بندی محصول (اختیاری)
   createdAt?: Timestamp; // زمان ایجاد محصول (توسط سرور مقداردهی می‌شود)
   updatedAt?: Timestamp; // زمان آخرین به‌روزرسانی
 }

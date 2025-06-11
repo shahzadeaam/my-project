@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -12,7 +11,7 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
+import { auth, isFirebaseAvailable } from '@/lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, Loader2, MailCheck } from 'lucide-react';
@@ -20,8 +19,8 @@ import type { Metadata } from 'next';
 
 // Metadata should be defined in a parent server component or layout if strict static generation is needed.
 // export const metadata: Metadata = {
-//   title: 'بازیابی رمز عبور - نیلوفر بوتیک',
-//   description: 'رمز عبور خود را در نیلوفر بوتیک بازیابی کنید.',
+//   title: 'بازیابی رمز عبور - زومجی',
+//   description: 'رمز عبور خود را در زومجی بازیابی کنید.',
 // };
 
 export default function ResetPasswordPage() {
@@ -41,6 +40,22 @@ export default function ResetPasswordPage() {
     if (!email) {
       setError('لطفاً آدرس ایمیل خود را وارد کنید.');
       setIsLoading(false);
+      return;
+    }
+
+    // Check if Firebase is available
+    if (!isFirebaseAvailable() || !auth) {
+      // Mock functionality for development
+      setTimeout(() => {
+        setEmailSent(true);
+        toast({
+          title: 'ایمیل ارسال شد! (Demo)',
+          description: `در حالت توسعه، یک ایمیل حاوی لینک بازنشانی رمز عبور به ${email} ارسال شد.`,
+          variant: 'default',
+          duration: 7000,
+        });
+        setIsLoading(false);
+      }, 2000);
       return;
     }
 
@@ -87,6 +102,15 @@ export default function ResetPasswordPage() {
             <CardDescription className="text-muted-foreground">
               ایمیل حساب کاربری خود را وارد کنید تا لینک بازیابی برایتان ارسال شود.
             </CardDescription>
+            {!isFirebaseAvailable() && (
+              <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>حالت توسعه</AlertTitle>
+                <AlertDescription>
+                  Firebase تنظیم نشده است. این یک نسخه نمایشی است.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardHeader>
           <CardContent className="px-6 py-8 sm:px-8">
             {error && !emailSent && ( // Only show error if email has not been successfully sent

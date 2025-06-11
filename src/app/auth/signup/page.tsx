@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -12,7 +11,7 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import Logo from '@/components/common/logo';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db, Timestamp } from '@/lib/firebase'; 
+import { auth, db, Timestamp, isFirebaseAvailable } from '@/lib/firebase'; 
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -47,6 +46,22 @@ export default function SignupPage() {
       return;
     }
     setIsLoading(true);
+
+    // Check if Firebase is available
+    if (!isFirebaseAvailable() || !auth || !db) {
+      // Mock functionality for development
+      setTimeout(() => {
+        toast({
+          title: 'ثبت نام موفق! (Demo)',
+          description: 'در حالت توسعه، حساب کاربری شما با موفقیت ایجاد شد.',
+          variant: 'default',
+        });
+        router.push('/profile');
+        setIsLoading(false);
+      }, 2000);
+      return;
+    }
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
@@ -112,6 +127,15 @@ export default function SignupPage() {
             </div>
             <CardTitle className="text-3xl font-bold">ایجاد حساب کاربری</CardTitle>
             <CardDescription className="text-muted-foreground">برای شروع خرید و لذت بردن از امکانات سایت ثبت نام کنید.</CardDescription>
+            {!isFirebaseAvailable() && (
+              <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>حالت توسعه</AlertTitle>
+                <AlertDescription>
+                  Firebase تنظیم نشده است. این یک نسخه نمایشی است.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardHeader>
           <CardContent className="px-6 py-8 sm:px-8">
             {error && (
@@ -199,23 +223,23 @@ export default function SignupPage() {
                     {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </Button>
               </div>
-              <Button type="submit" className="w-full h-12 text-base font-semibold mt-3" disabled={isLoading}>
+              <Button type="submit" className="w-full h-12 text-base font-semibold" disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="ml-2 h-5 w-5 animate-spin rtl:mr-2 rtl:ml-0" />
-                    در حال ثبت نام...
+                    در حال ایجاد حساب کاربری...
                   </>
                 ) : (
-                  'ثبت نام'
+                  'ایجاد حساب کاربری'
                 )}
               </Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col items-center text-sm pb-8">
             <p className="text-muted-foreground">
-              قبلاً ثبت نام کرده‌اید؟{' '}
+              قبلاً حساب کاربری دارید؟{' '}
               <Link href="/auth/login" className="font-semibold text-primary hover:underline">
-                وارد شوید
+                ورود به حساب کاربری
               </Link>
             </p>
           </CardFooter>

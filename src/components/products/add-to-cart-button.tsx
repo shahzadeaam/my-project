@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -49,7 +48,7 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
     <Button 
       onClick={handleAddToCart} 
       size="lg" 
-      className="w-full md:w-auto bg-accent text-accent-foreground hover:bg-accent/90 transition-all duration-300"
+      className="w-full md:w-auto bg-accent text-white hover:bg-accent/90 transition-all duration-300"
       disabled={isInCart || (isAddedOrProcessing && !isInCart)} 
     >
       {isInCart ? (

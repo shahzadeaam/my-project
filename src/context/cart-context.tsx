@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { Product } from '@/types/firestore'; // Updated to use Firestore Product type
@@ -21,6 +20,7 @@ interface CartContextType extends CartState {
   clearCart: () => void;
   getItemQuantity: (productId: string) => number;
   totalItems: number;
+  totalPrice: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -121,9 +121,19 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [state.items]);
   
   const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPrice = state.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   return (
-    <CartContext.Provider value={{ ...state, addItem, removeItem, updateItemQuantity, clearCart, getItemQuantity, totalItems }}>
+    <CartContext.Provider value={{ 
+      ...state, 
+      addItem, 
+      removeItem, 
+      updateItemQuantity, 
+      clearCart, 
+      getItemQuantity, 
+      totalItems,
+      totalPrice 
+    }}>
       {children}
     </CartContext.Provider>
   );

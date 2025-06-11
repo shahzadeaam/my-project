@@ -1,13 +1,13 @@
-
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { MoreHorizontal, UsersRound, Loader2, Edit, UserX, UserCheck, Info } from 'lucide-react';
 import type { UserProfileDocument } from '@/types/firestore';
-import { db, Timestamp } from '@/lib/firebase';
+import { db, Timestamp, isFirebaseAvailable } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
@@ -30,6 +30,54 @@ import {
 import EditUserForm, { type EditUserFormValues } from '@/components/admin/users/edit-user-form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+// Mock user data for when Firebase is not available
+const mockUsers: UserProfileDocument[] = [
+  {
+    uid: 'user1',
+    fullName: 'نیلوفر محمدی',
+    email: 'niloo@example.com',
+    phoneNumber: '09123456789',
+    createdAt: Timestamp.now(),
+    role: 'customer',
+    disabled: false,
+  },
+  {
+    uid: 'user2',
+    fullName: 'احمد رضایی',
+    email: 'ahmad.r@example.com',
+    phoneNumber: '09187654321',
+    createdAt: Timestamp.now(),
+    role: 'customer',
+    disabled: false,
+  },
+  {
+    uid: 'user3',
+    fullName: 'سارا کریمی',
+    email: 'sara.k@example.com',
+    phoneNumber: '09351234567',
+    createdAt: Timestamp.now(),
+    role: 'admin',
+    disabled: false,
+  },
+  {
+    uid: 'user4',
+    fullName: 'محمد اکبری',
+    email: 'mohammad.a@example.com',
+    phoneNumber: '09361234567',
+    createdAt: Timestamp.now(),
+    role: 'customer',
+    disabled: true,
+  },
+  {
+    uid: 'user5',
+    fullName: 'فاطمه حسینی',
+    email: 'fateme.h@example.com',
+    phoneNumber: '09371234567',
+    createdAt: Timestamp.now(),
+    role: 'customer',
+    disabled: false,
+  },
+];
 
 export default function AdminUsersPage() {
   const { currentUser: adminUser, userDocument: adminUserDoc, loading: authLoading } = useAuth();
@@ -47,6 +95,15 @@ export default function AdminUsersPage() {
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     setFetchError(null);
+    
+    // Check if Firebase is available
+    if (!isFirebaseAvailable() || !db) {
+      console.log("Firebase not available, using mock user data");
+      setUserList(mockUsers);
+      setIsLoadingUsers(false);
+      return;
+    }
+
     try {
       const usersCol = collection(db, 'users');
       const usersSnapshot = await getDocs(query(usersCol, orderBy('createdAt', 'desc')));
@@ -96,6 +153,16 @@ export default function AdminUsersPage() {
       return;
     }
     setIsSavingUser(true);
+    
+    // Check if Firebase is available
+    if (!isFirebaseAvailable() || !db) {
+      // Mock operation for demo
+      toast({ title: "موفقیت", description: `اطلاعات کاربر "${data.fullName}" با موفقیت به‌روزرسانی شد. (شبیه‌سازی شده)`});
+      setIsEditDialogOpen(false);
+      setIsSavingUser(false);
+      return;
+    }
+
     try {
       const userDocRef = doc(db, 'users', selectedUserForEdit.uid);
       await updateDoc(userDocRef, {
@@ -124,6 +191,14 @@ export default function AdminUsersPage() {
     const newDisabledStatus = !user.disabled;
     const actionText = newDisabledStatus ? "غیرفعال" : "فعال";
     if (window.confirm(`آیا از ${actionText} کردن کاربر "${user.fullName}" مطمئن هستید؟ (این عملیات شبیه‌سازی شده است)`)) {
+      
+      // Check if Firebase is available
+      if (!isFirebaseAvailable() || !db) {
+        // Mock operation for demo
+        toast({ title: "موفقیت", description: `وضعیت کاربر "${user.fullName}" به ${actionText} تغییر یافت (شبیه‌سازی شده).`});
+        return;
+      }
+
       try {
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, {

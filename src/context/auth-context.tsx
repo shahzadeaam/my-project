@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { ReactNode } from 'react';
@@ -26,9 +25,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Check if Firebase auth is available
+    if (!auth) {
+      console.log('Firebase auth not configured, skipping auth setup');
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-      if (user) {
+      if (user && db) {
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
@@ -60,6 +66,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []); // router and pathname are not needed as direct dependencies for user fetching logic
 
   const logout = async () => {
+    if (!auth) {
+      console.log('Firebase auth not configured, cannot logout');
+      return;
+    }
+
     setLoading(true); // Optional: indicate loading during logout
     try {
       await auth.signOut();
